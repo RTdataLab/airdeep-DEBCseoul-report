@@ -1,40 +1,60 @@
 /* ============================================================
-   장애인기업종합지원센터 전국 월간 모니터링 리포트
-   그래프 1개 = CSV 1개 구조. data/ 폴더 CSV만 수정하면 갱신됨.
+   서울 본사 장애인기업종합지원센터 월간 모니터링 리포트
 
-   data/
-     holidays.csv       주말·공휴일 목록
-     temp_hq.csv        본사 온도 (서울1층, 서울3층, 최고기온)
-     temp_regional.csv  지역센터 온도 (진주, 충북, 부천, 최고기온)
-     temp_gachi.csv     가치만드소 온도 (광주, 아산, 최고기온)
-     oper_hq.csv        본사 층별 가동시간
-     oper_north.csv     북부(부천) 공간별 가동시간
-     oper_middle.csv    중부(충북) 공간별 가동시간
-     oper_south.csv     남부(진주) 공간별 가동시간
-     oper_gachi.csv     가치만드소 공간별 가동시간
-     increase_work.csv  전월 대비 증감 (근무시간)
-     increase_off.csv   전월 대비 증감 (근무외)
+   데이터 파일명은 아래 DATA_FILES 설정표에서 관리합니다.
+   데이터팀이 보낸 CSV를 그 이름 그대로 data/ 폴더에 넣으면
+   새로고침 시 리포트가 자동 갱신됩니다. (파일명이 바뀌면 설정표만 수정)
    ============================================================ */
 
+const DAYS = Array.from({length:31},(_,i)=>i+1);          // 5월 = 31일
+const LC   = ['#2D6BFF','#E5484D','#22C55E','#F59E0B','#7C3AED','#0F766E','#BE185D','#0EA5E9','#78716C','#DB2777'];
+const TT   = {backgroundColor:'#0B1220',titleColor:'#fff',bodyColor:'#E5E9F0',padding:10,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10,boxPadding:3};
 const OUTDOOR_KEY = '최고기온(℃)';
-const LC = ['#2D6BFF','#E5484D','#22C55E','#F59E0B','#7C3AED','#0F766E','#BE185D','#0EA5E9'];
-const GRID = '#EEF1F6';
-let HOLIDAYS = new Set();
+const HOT_TEMP = 28;
+let HOLIDAYS = new Set();                                  // 날짜에서 자동 계산
+
+/* ✏️ 데이터 파일 설정표 — 데이터팀 파일명을 그대로 적으면 됩니다. (CSV만 지원) */
+const DATA_FILES = {
+  tempZone:  '3-1.csv',    // 섹션3-1 — 구역별 일평균 실내온도
+  ctrlLow:   '3-2.1.csv',  // 섹션3-2-1 — 1·2·3층·별관 제어기 온도
+  ctrl6:     '3-2.2.csv',  // 섹션3-2-2 — 6층 제어기 온도
+  ctrl7:     '3-2.3.csv',  // 섹션3-2-3 — 7층 제어기 온도
+  operZone:  '4-1.csv',    // 섹션4-1 — 구역별 일평균 가동시간
+  operSpace: '4-2.csv',    // 섹션4-2 — 공간구분별 일평균 가동시간
+  incWork:   '4-3.csv',    // 섹션4-3 — 전월대비 증가(근무시간)
+  incOff:    '4-4.csv'     // 섹션4-4 — 전월대비 증가(근무외)
+};
+
+/* ✏️ 공휴일 날짜 — 주말(토·일)은 자동 계산되고, 여기엔 공휴일만 적으면 됩니다.
+   해당 날짜의 x축 라벨이 빨간색으로 표시됩니다. (매달 이 줄만 갱신) */
+const PUBLIC_HOLIDAYS = ['2026-05-01', '2026-05-05', '2026-05-25']; // 근로자의날 · 어린이날 · 대체공휴일
+
+function isHolidayDate(s){
+  const m = String(s ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return false;
+  const day = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00`).getDay();
+  return day === 0 || day === 6 || PUBLIC_HOLIDAYS.includes(m[0]);
+}
+
+function dataUrl(name){
+  // CSV를 수정하면 항상 최신 데이터를 다시 불러오도록 매번 다른 값을 붙임
+  return `data/${name}?v=${Date.now()}`;
+}
 
 /* ── CSV 파서 ──────────────────────────────────────────────── */
-function parseCSV(text) {
-  text = text.replace(/^﻿/, '');
+function parseCSV(text){
+  text = text.replace(/^\uFEFF/, '');
   const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
   return lines.map(line => {
     const cells = []; let cur = '', inQ = false;
-    for (let i = 0; i < line.length; i++) {
+    for(let i=0;i<line.length;i++){
       const c = line[i];
-      if (inQ) {
-        if (c === '"') { if (line[i+1] === '"') { cur += '"'; i++; } else inQ = false; }
+      if(inQ){
+        if(c === '"'){ if(line[i+1] === '"'){ cur += '"'; i++; } else inQ = false; }
         else cur += c;
       } else {
-        if (c === '"') inQ = true;
-        else if (c === ',') { cells.push(cur); cur = ''; }
+        if(c === '"') inQ = true;
+        else if(c === ','){ cells.push(cur); cur = ''; }
         else cur += c;
       }
     }
@@ -42,269 +62,266 @@ function parseCSV(text) {
     return cells.map(s => s.trim());
   });
 }
-
-function num(v) {
-  if (v === undefined || v === null || v === '') return null;
-  const n = parseFloat(v); return isNaN(n) ? null : n;
+function num(v){
+  if(v === undefined || v === null || v === '') return null;
+  const n = parseFloat(v);
+  return Number.isNaN(n) ? null : n;
 }
-
-function toSeriesMap(rows) {
+function toSeriesMap(rows){
   const names = rows[0].slice(1);
   const map = {}; names.forEach(n => map[n] = []);
-  const labels = [];
-  for (let r = 1; r < rows.length; r++) {
-    const d = rows[r][0] ?? '';
-    const m = d.match(/(\d{4})-(\d{2})-(\d{2})/);
-    labels.push(m ? String(Number(m[3])) : d);
-    names.forEach((n, ci) => map[n].push(num(rows[r][ci+1])));
+  for(let r=1;r<rows.length;r++){
+    names.forEach((n,ci)=> map[n].push(num(rows[r][ci+1])));
   }
-  return { names, map, labels };
+  return { names, map };
 }
-
-function toObjects(rows) {
+function toObjects(rows){
   const header = rows[0];
-  return rows.slice(1).map(row => {
-    const o = {}; header.forEach((h, i) => o[h] = row[i] ?? ''); return o;
+  return rows.slice(1).map(row=>{
+    const o = {}; header.forEach((h,i)=> o[h] = row[i] ?? ''); return o;
   });
 }
-
-/* ── 주말·공휴일 x축 빨간 라벨 ─────────────────────────────── */
-function tickColor() {
-  return ctx => HOLIDAYS.has(Number(ctx.tick.label)) ? '#E5484D' : '#5B6577';
+function fmtHours(v, signed=false){
+  const n = num(v) ?? 0;
+  const abs = Math.abs(n);
+  const txt = abs.toFixed(2).replace(/\.?0+$/, '');
+  return signed && n > 0 ? `+${txt}` : signed && n < 0 ? `-${txt}` : txt;
+}
+function fmtZoneName(v){
+  return String(v || '')
+    .replace(/^본사_/, '')
+    .replace(/_/g, ' ')
+    .replace(/서울(?=\d)/g, '서울 ')
+    .replace(/(\d)층/g, '$1층')
+    .trim();
 }
 
-/* ── 28℃ 이상 빨간 구역 플러그인 ───────────────────────────── */
-const redZonePlugin = {
-  id: 'redZone',
-  beforeDraw(chart) {
-    const { ctx, chartArea, scales: { y } } = chart;
-    if (!chartArea || !y) return;
-    const y28 = y.getPixelForValue(28);
-    if (y28 > chartArea.top) {
-      ctx.save();
-      ctx.fillStyle = 'rgba(229,72,77,0.08)';
-      ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, y28 - chartArea.top);
-      ctx.strokeStyle = 'rgba(229,72,77,0.35)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.moveTo(chartArea.left, y28);
-      ctx.lineTo(chartArea.right, y28);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
+/* ── 주말·공휴일 x축 라벨 빨강 처리용 콜백 ────────────────── */
+function tickColor(){
+  // 라벨(날짜)이 휴일이면 빨강, 아니면 기본색
+  return (ctx)=> HOLIDAYS.has(DAYS[ctx.index]) ? '#E5484D' : '#5B6577';
+}
+
+const hotTempBandPlugin = {
+  id:'hotTempBand',
+  beforeDatasetsDraw(chart){
+    if(!chart.options.plugins?.hotTempBand?.enabled) return;
+    const {ctx, chartArea, scales} = chart;
+    const y = scales.y;
+    if(!chartArea || !y || HOT_TEMP > y.max || HOT_TEMP < y.min) return;
+    const yPos = y.getPixelForValue(HOT_TEMP);
+    ctx.save();
+    ctx.fillStyle = 'rgba(229, 72, 77, .08)';
+    ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, yPos - chartArea.top);
+    ctx.strokeStyle = 'rgba(229, 72, 77, .65)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(chartArea.left, yPos);
+    ctx.lineTo(chartArea.right, yPos);
+    ctx.stroke();
+    ctx.restore();
   }
 };
 
-/* ── 온도 라인 차트 (실외 점선, 28℃ 빨간 구역) ─────────────── */
-function mkTempChart(canvasId, legendId, locationName, series) {
+Chart.register(hotTempBandPlugin);
+
+/* ── 온도 라인차트 (실외 점선 오버레이) ───────────────────── */
+function mkTempChart(canvasId, legendId, series){
   const el = document.getElementById(canvasId);
-  if (!el) return;
+  if(!el) return;
+  // 실외 계열은 검은 점선, 나머지는 컬러 실선
   const innerNames = series.names.filter(n => n !== OUTDOOR_KEY);
-  const datasets = innerNames.map((label, i) => ({
-    label, data: series.map[label],
-    borderColor: LC[i % LC.length], backgroundColor: 'transparent',
-    borderWidth: 2, fill: false, spanGaps: true, tension: .35,
-    pointRadius: 0, pointHoverRadius: 4
+  const datasets = innerNames.map((label,i)=>({
+    label, data:series.map[label],
+    borderColor:LC[i%LC.length], backgroundColor:'transparent',
+    borderWidth:1.9, fill:false, spanGaps:true, tension:.35,
+    pointRadius:0, pointHoverRadius:4,
+    segment:{
+      borderColor:ctx => (ctx.p0.parsed.y >= HOT_TEMP || ctx.p1.parsed.y >= HOT_TEMP) ? '#E5484D' : LC[i%LC.length],
+      borderWidth:ctx => (ctx.p0.parsed.y >= HOT_TEMP || ctx.p1.parsed.y >= HOT_TEMP) ? 2.6 : 1.9
+    }
   }));
-  if (series.map[OUTDOOR_KEY]) {
+  if(series.map[OUTDOOR_KEY]){
     datasets.push({
-      label: '실외 최고기온', data: series.map[OUTDOOR_KEY],
-      borderColor: '#111827', backgroundColor: 'transparent',
-      borderWidth: 1.8, borderDash: [5, 4], fill: false, spanGaps: true,
-      tension: .35, pointRadius: 0, pointHoverRadius: 4
+      label:'실외 최고기온', data:series.map[OUTDOOR_KEY],
+      borderColor:'#111827', backgroundColor:'transparent',
+      borderWidth:2, borderDash:[5,4], fill:false, spanGaps:true, tension:.35,
+      pointRadius:0, pointHoverRadius:4
     });
   }
-  const chart = new Chart(el, {
-    type: 'line',
-    data: { labels: series.labels, datasets },
-    plugins: [redZonePlugin],
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { title: items => `${items[0].label}일`, label: c => ` ${c.dataset.label}: ${c.parsed.y}℃` } }
+  new Chart(el,{
+    type:'line',
+    data:{labels:DAYS, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},hotTempBand:{enabled:true},tooltip:{...TT,callbacks:{
+        title:items=>`${items[0].label}일`,
+        label:c=>` ${c.dataset.label}: ${c.parsed.y}℃`
+      }}},
+      scales:{
+        x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:9},color:tickColor()}},
+        y:{min:14,suggestedMax:34,ticks:{callback:v=>v+'℃',font:{size:9.5}},grid:{color:'#EEF1F6'}}
       },
-      scales: {
-        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 16, font: { size: 9 }, color: tickColor() } },
-        y: { min: 14, suggestedMax: 34, ticks: { callback: v => v + '℃', font: { size: 9.5 } }, grid: { color: GRID } }
-      }
+      elements:{line:{tension:.35}}
     }
   });
-  if (legendId) {
+  // 범례 자동 생성
+  if(legendId){
     const lg = document.getElementById(legendId);
-    if (lg) {
-      lg.innerHTML = innerNames.map((n, i) => `<span><i style="background:${LC[i%LC.length]}"></i>${n}</span>`).join('') +
-        `<span><i style="background:#111827;height:0;border-top:2px dashed #111827;width:18px"></i>실외 최고기온</span>` +
-        `<span><i style="background:rgba(229,72,77,0.15);border:1px dashed rgba(229,72,77,0.4);width:12px;height:12px;border-radius:2px"></i>28℃ 이상</span>`;
+    if(lg){
+      let html = innerNames.map((n,i)=>`<span><i style="background:${LC[i%LC.length]}"></i>${n}</span>`).join('');
+      html += `<span><i style="background:#111827;height:0;border-top:2px dashed #111827;width:18px"></i>실외 최고기온</span>`;
+      html += `<span><i style="background:rgba(229,72,77,.18);border-top:1px dashed #E5484D;width:18px;height:8px"></i>28℃ 이상</span>`;
+      lg.innerHTML = html;
     }
   }
 }
 
-/* ── 단일 위치 온도 차트 (그룹 CSV에서 하나의 컬럼만) ────────── */
-function mkSingleTempChart(canvasId, locationKey, series) {
+/* ── 가동시간 라인차트 ─────────────────────────────────────── */
+function mkOperLine(canvasId, legendId, series){
   const el = document.getElementById(canvasId);
-  if (!el) return;
-  const datasets = [{
-    label: locationKey, data: series.map[locationKey],
-    borderColor: '#2D6BFF', backgroundColor: 'transparent',
-    borderWidth: 2, fill: false, spanGaps: true, tension: .35,
-    pointRadius: 0, pointHoverRadius: 4
-  }];
-  if (series.map[OUTDOOR_KEY]) {
-    datasets.push({
-      label: '실외 최고기온', data: series.map[OUTDOOR_KEY],
-      borderColor: '#111827', backgroundColor: 'transparent',
-      borderWidth: 1.8, borderDash: [5, 4], fill: false, spanGaps: true,
-      tension: .35, pointRadius: 0, pointHoverRadius: 4
-    });
-  }
-  new Chart(el, {
-    type: 'line',
-    data: { labels: series.labels, datasets },
-    plugins: [redZonePlugin],
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { title: items => `${items[0].label}일`, label: c => ` ${c.dataset.label}: ${c.parsed.y}℃` } }
-      },
-      scales: {
-        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 16, font: { size: 9 }, color: tickColor() } },
-        y: { min: 14, suggestedMax: 34, ticks: { callback: v => v + '℃', font: { size: 9.5 } }, grid: { color: GRID } }
+  if(!el) return;
+  new Chart(el,{
+    type:'line',
+    data:{labels:DAYS,datasets:series.names.map((label,i)=>({
+      label, data:series.map[label], borderColor:LC[i%LC.length], backgroundColor:'transparent',
+      borderWidth:1.9, fill:false, spanGaps:true, tension:.35, pointRadius:0, pointHoverRadius:4
+    }))},
+    options:{
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+        title:items=>`${items[0].label}일`, label:c=>` ${c.dataset.label}: ${c.parsed.y}h`
+      }}},
+      scales:{
+        x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:9},color:tickColor()}},
+        y:{min:0,suggestedMax:7,ticks:{callback:v=>v+'h',font:{size:9.5}},grid:{color:'#EEF1F6'}}
       }
     }
   });
-}
-
-/* ── 가동시간 라인 차트 ─────────────────────────────────────── */
-function mkOperLine(canvasId, legendId, series) {
-  const el = document.getElementById(canvasId);
-  if (!el) return;
-  new Chart(el, {
-    type: 'line',
-    data: {
-      labels: series.labels,
-      datasets: series.names.map((label, i) => ({
-        label, data: series.map[label],
-        borderColor: LC[i % LC.length], backgroundColor: 'transparent',
-        borderWidth: 1.9, fill: false, spanGaps: true, tension: .35,
-        pointRadius: 0, pointHoverRadius: 4
-      }))
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { title: items => `${items[0].label}일`, label: c => ` ${c.dataset.label}: ${c.parsed.y}h` } }
-      },
-      scales: {
-        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 16, font: { size: 9 }, color: tickColor() } },
-        y: { min: 0, suggestedMax: 6, ticks: { callback: v => v + 'h', font: { size: 9.5 } }, grid: { color: GRID } }
-      }
-    }
-  });
-  if (legendId) {
+  if(legendId){
     const lg = document.getElementById(legendId);
-    if (lg) lg.innerHTML = series.names.map((n, i) => `<span><i style="background:${LC[i%LC.length]}"></i>${n}</span>`).join('');
+    if(lg) lg.innerHTML = series.names.map((n,i)=>`<span><i style="background:${LC[i%LC.length]}"></i>${n}</span>`).join('');
   }
 }
 
-/* ── 전월 대비 증감 표 ─────────────────────────────────────── */
-function fillIncreaseTable(tbodyId, rows) {
+/* ── 가동시간 막대차트 ─────────────────────────────────────── */
+function mkOperBar(canvasId, legendId, series){
+  const el = document.getElementById(canvasId);
+  if(!el) return;
+  new Chart(el,{
+    type:'bar',
+    data:{labels:DAYS,datasets:series.names.map((label,i)=>({
+      label, data:series.map[label],
+      backgroundColor:i === 0 ? 'rgba(45,107,255,.72)' : 'rgba(229,72,77,.72)',
+      borderColor:i === 0 ? '#2D6BFF' : '#E5484D',
+      borderWidth:1,
+      borderRadius:4,
+      maxBarThickness:14
+    }))},
+    options:{
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+        title:items=>`${items[0].label}일`, label:c=>` ${c.dataset.label}: ${c.parsed.y}h`
+      }}},
+      scales:{
+        x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:9},color:tickColor()}},
+        y:{min:0,suggestedMax:7,ticks:{callback:v=>v+'h',font:{size:9.5}},grid:{color:'#EEF1F6'}}
+      }
+    }
+  });
+  if(legendId){
+    const lg = document.getElementById(legendId);
+    if(lg) lg.innerHTML = series.names.map((n,i)=>`<span><i style="background:${i === 0 ? '#2D6BFF' : '#E5484D'};height:8px"></i>${n}</span>`).join('');
+  }
+}
+
+/* ── 증감 표 자동 생성 ─────────────────────────────────────── */
+function fillIncreaseTable(tbodyId, rows){
   const tb = document.getElementById(tbodyId);
-  if (!tb) return;
-  const data = rows.map(r => {
-    const zone = (r['HUB_NICKNAME'] || r['지역'] || '').replace(/^[^_]+_/, '');
-    const prev = num(r['총가동시간_시간_4월']) ?? 0;
-    const cur  = num(r['총가동시간_시간_5월']) ?? 0;
-    const diff = +(cur - prev).toFixed(1);
-    const pct  = prev > 0 ? +((diff / prev) * 100).toFixed(1) : null;
-    return { zone, prev, cur, diff, pct };
-  }).sort((a, b) => b.diff - a.diff);
-  tb.innerHTML = data.map((r, i) => {
-    const pctTxt = r.pct == null ? '—' : `<span class="${r.pct>0?'risk':'ok-txt'}">${r.pct>0?'▲':'▼'} ${Math.abs(r.pct)}%</span>`;
-    const diffTxt = `<span class="${r.diff>0?'risk':'ok-txt'}">${r.diff>0?'+':''}${r.diff}</span>`;
-    const rank = i === 0 ? '<span class="rk1">1</span>' : `<span class="rkn">${i+1}</span>`;
-    return `<tr><td class="num">${rank}</td><td><strong>${r.zone}</strong></td><td class="num">${r.prev}</td><td class="num">${r.cur}</td><td class="num">${diffTxt}</td><td class="num">${pctTxt}</td></tr>`;
+  if(!tb) return;
+  const data = rows.map(r=>{
+    const zone = fmtZoneName(r['HUB_NICKNAME'] || r['지역'] || '');
+    const prev = num(r['총가동시간_시간_4월']) ?? num(r['전월']) ?? 0;
+    const cur  = num(r['총가동시간_시간_5월']) ?? num(r['당월']) ?? 0;
+    const deviceCount = num(r['제어기_장치수']) ?? 0;
+    const prevAvg = num(r['장비당_일평균가동시간_시간_4월']) ?? 0;
+    const curAvg = num(r['장비당_일평균가동시간_시간_5월']) ?? 0;
+    const totalDiff = num(r['총가동시간_증감']) ?? +(cur - prev).toFixed(2);
+    const avgDiff = num(r['장비당_일평균가동시간_증감']) ?? +(curAvg - prevAvg).toFixed(2);
+    return { zone, deviceCount, prev, prevAvg, cur, curAvg, totalDiff, avgDiff };
+  }).sort((a,b)=>b.avgDiff-a.avgDiff);
+  tb.innerHTML = data.map(r=>{
+    const totalDiffTxt = `<span class="${r.totalDiff>0?'risk':'ok-txt'}">${fmtHours(r.totalDiff, true)}</span>`;
+    const avgDiffTxt = `<span class="${r.avgDiff>0?'risk':'ok-txt'}">${fmtHours(r.avgDiff, true)}</span>`;
+    return `<tr>
+      <td class="inc-zone"><strong>${r.zone}</strong></td>
+      <td class="num inc-num">${r.deviceCount}</td>
+      <td class="num inc-num">${fmtHours(r.prev)}</td>
+      <td class="num inc-num">${fmtHours(r.prevAvg)}</td>
+      <td class="num inc-num">${fmtHours(r.cur)}</td>
+      <td class="num inc-num">${fmtHours(r.curAvg)}</td>
+      <td class="num inc-num">${totalDiffTxt}</td>
+      <td class="num inc-num">${avgDiffTxt}</td>
+    </tr>`;
   }).join('');
 }
 
 /* ── 에러 표시 ─────────────────────────────────────────────── */
-function showError(msg) {
+function showError(msg){
   const div = document.createElement('div');
   div.style.cssText = 'background:#FEECEC;border:1px solid #E5484D;color:#B91C1C;padding:14px 18px;border-radius:10px;margin:16px 0;font-size:13px;line-height:1.6';
-  div.innerHTML = `<strong>데이터를 불러오지 못했습니다.</strong><br>${msg}<br><span style="color:#7A1F1F;font-size:12px">로컬 서버에서 열었는지(예: <code>python -m http.server</code>), data 폴더의 CSV 파일이 있는지 확인해 주세요.</span>`;
+  div.innerHTML = `<strong>데이터를 불러오지 못했습니다.</strong><br>${msg}<br><span style="color:#7A1F1F;font-size:12px">로컬 서버에서 열었는지(예: <code>python -m http.server</code>), data 폴더의 CSV가 있는지 확인해 주세요.</span>`;
   document.body.prepend(div);
 }
 
 /* ── 메인 ──────────────────────────────────────────────────── */
-async function main() {
-  Chart.defaults.font.family = "'Pretendard Variable', Pretendard, -apple-system, system-ui, sans-serif";
+async function main(){
+  Chart.defaults.font.family = "'Pretendard Variable',Pretendard,system-ui,sans-serif";
   Chart.defaults.font.size = 11;
   Chart.defaults.color = '#5B6577';
 
-  const files = [
-    'data/holidays.csv',
-    'data/temp_hq.csv', 'data/temp_regional.csv', 'data/temp_gachi.csv',
-    'data/oper_hq.csv', 'data/oper_north.csv', 'data/oper_middle.csv',
-    'data/oper_south.csv', 'data/oper_gachi.csv',
-    'data/increase_work.csv', 'data/increase_off.csv'
-  ];
-
-  let texts;
+  const keys = ['tempZone','ctrlLow','ctrl6','ctrl7','operZone','operSpace','incWork','incOff'];
+  let txt = {};
   try {
-    const res = await Promise.all(files.map(f => fetch(f)));
-    if (res.some(r => !r.ok)) throw new Error('CSV 파일 응답 오류 (HTTP)');
-    texts = await Promise.all(res.map(r => r.text()));
-  } catch(e) { showError(e.message); return; }
+    const res = await Promise.all(keys.map(k=>fetch(dataUrl(DATA_FILES[k]))));
+    res.forEach((r,i)=>{ if(!r.ok) throw new Error(`${DATA_FILES[keys[i]]} 응답 오류 (HTTP) — data 폴더의 파일명을 확인하세요`); });
+    const texts = await Promise.all(res.map(r=>r.text()));
+    keys.forEach((k,i)=> txt[k] = texts[i]);
+  } catch(e){ showError(e.message); return; }
 
-  let holiRows, tempHQ, tempRegional, tempGachi,
-      operHQ, operNorth, operMiddle, operSouth, operGachi,
-      incWork, incOff;
+  let tempZone, ctrlLow, ctrl6, ctrl7, operZone, operSpace, incWork, incOff;
   try {
-    [0].forEach(() => {
-      holiRows     = toObjects(parseCSV(texts[0]));
-      tempHQ       = toSeriesMap(parseCSV(texts[1]));
-      tempRegional = toSeriesMap(parseCSV(texts[2]));
-      tempGachi    = toSeriesMap(parseCSV(texts[3]));
-      operHQ       = toSeriesMap(parseCSV(texts[4]));
-      operNorth    = toSeriesMap(parseCSV(texts[5]));
-      operMiddle   = toSeriesMap(parseCSV(texts[6]));
-      operSouth    = toSeriesMap(parseCSV(texts[7]));
-      operGachi    = toSeriesMap(parseCSV(texts[8]));
-      incWork      = toObjects(parseCSV(texts[9]));
-      incOff       = toObjects(parseCSV(texts[10]));
+    const tempRows = parseCSV(txt.tempZone);
+    // 주말·공휴일 자동 계산 (날짜 열 기준) → x축 라벨 빨강 처리
+    HOLIDAYS = new Set();
+    tempRows.slice(1).forEach(r=>{
+      const m = String(r[0] ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if(m && isHolidayDate(m[0])) HOLIDAYS.add(Number(m[3]));
     });
-  } catch(e) { showError('CSV 파싱 오류: ' + e.message); return; }
+    tempZone  = toSeriesMap(tempRows);
+    ctrlLow   = toSeriesMap(parseCSV(txt.ctrlLow));
+    ctrl6     = toSeriesMap(parseCSV(txt.ctrl6));
+    ctrl7     = toSeriesMap(parseCSV(txt.ctrl7));
+    operZone  = toSeriesMap(parseCSV(txt.operZone));
+    operSpace = toSeriesMap(parseCSV(txt.operSpace));
+    incWork   = toObjects(parseCSV(txt.incWork));
+    incOff    = toObjects(parseCSV(txt.incOff));
+  } catch(e){ showError('CSV 파싱 중 오류: ' + e.message); return; }
 
-  HOLIDAYS = new Set(holiRows.map(r => num(Object.values(r)[0])).filter(v => v != null));
+  /* 온도 그래프 (실외 점선) */
+  mkTempChart('c-temp-zone',     'lg-zone',     tempZone);
+  mkTempChart('c-temp-ctrl-low', 'lg-ctrl-low', ctrlLow);
+  mkTempChart('c-temp-ctrl-6f',  'lg-ctrl-6f',  ctrl6);
+  mkTempChart('c-temp-ctrl-7f',  'lg-ctrl-7f',  ctrl7);
 
-  /* 3. 온도 차트 — 본사 (서울 1층, 3층 각각) */
-  mkSingleTempChart('c-temp-hq-1f', '서울_1층_평균온도', tempHQ);
-  mkSingleTempChart('c-temp-hq-3f', '서울_3층_평균온도', tempHQ);
+  /* 가동시간 라인 */
+  mkOperLine('c-oper-line', 'lg-oper', operZone);
 
-  /* 3. 온도 차트 — 지역센터 (진주, 충북, 부천 각각) */
-  mkSingleTempChart('c-temp-jinju',  '진주_평균온도',  tempRegional);
-  mkSingleTempChart('c-temp-chungbuk', '충북_평균온도', tempRegional);
-  mkSingleTempChart('c-temp-bucheon', '부천_평균온도', tempRegional);
+  /* 공간구분별 일평균 가동시간 막대 */
+  mkOperBar('c-oper-bar', 'lg-oper-space', operSpace);
 
-  /* 3. 온도 차트 — 가치만드소 (광주, 아산 각각) */
-  mkSingleTempChart('c-temp-gwangju', '광주_평균온도', tempGachi);
-  mkSingleTempChart('c-temp-asan',    '아산_평균온도',  tempGachi);
-
-  /* 4. 가동시간 라인 차트 */
-  mkOperLine('c-oper-hq',     'lg-oper-hq',     operHQ);
-  mkOperLine('c-oper-north',  'lg-oper-north',   operNorth);
-  mkOperLine('c-oper-middle', 'lg-oper-middle',  operMiddle);
-  mkOperLine('c-oper-south',  'lg-oper-south',   operSouth);
-  mkOperLine('c-oper-gachi',  'lg-oper-gachi',   operGachi);
-
-  /* 5. 전월 대비 증감 표 */
+  /* 증감 표 */
   fillIncreaseTable('incWorkB', incWork);
   fillIncreaseTable('incOffB',  incOff);
 }
