@@ -10,6 +10,7 @@ const DAYS = Array.from({length:31},(_,i)=>i+1);          // 5월 = 31일
 const LC   = ['#2D6BFF','#E5484D','#22C55E','#F59E0B','#7C3AED','#0F766E','#BE185D','#0EA5E9','#78716C','#DB2777'];
 const TT   = {backgroundColor:'#0B1220',titleColor:'#fff',bodyColor:'#E5E9F0',padding:10,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10,boxPadding:3};
 const OUTDOOR_KEY = '최고기온(℃)';
+const HOT_TEMP = 28;
 let HOLIDAYS = new Set();                                  // 날짜에서 자동 계산
 
 /* ✏️ 데이터 파일 설정표 — 데이터팀 파일명을 그대로 적으면 됩니다. (CSV만 지원) */
@@ -87,6 +88,30 @@ function tickColor(){
   return (ctx)=> HOLIDAYS.has(DAYS[ctx.index]) ? '#E5484D' : '#5B6577';
 }
 
+const hotTempBandPlugin = {
+  id:'hotTempBand',
+  beforeDatasetsDraw(chart){
+    if(!chart.options.plugins?.hotTempBand?.enabled) return;
+    const {ctx, chartArea, scales} = chart;
+    const y = scales.y;
+    if(!chartArea || !y || HOT_TEMP > y.max || HOT_TEMP < y.min) return;
+    const yPos = y.getPixelForValue(HOT_TEMP);
+    ctx.save();
+    ctx.fillStyle = 'rgba(229, 72, 77, .08)';
+    ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, yPos - chartArea.top);
+    ctx.strokeStyle = 'rgba(229, 72, 77, .65)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(chartArea.left, yPos);
+    ctx.lineTo(chartArea.right, yPos);
+    ctx.stroke();
+    ctx.restore();
+  }
+};
+
+Chart.register(hotTempBandPlugin);
+
 /* ── 온도 라인차트 (실외 점선 오버레이) ───────────────────── */
 function mkTempChart(canvasId, legendId, series){
   const el = document.getElementById(canvasId);
@@ -97,7 +122,11 @@ function mkTempChart(canvasId, legendId, series){
     label, data:series.map[label],
     borderColor:LC[i%LC.length], backgroundColor:'transparent',
     borderWidth:1.9, fill:false, spanGaps:true, tension:.35,
-    pointRadius:0, pointHoverRadius:4
+    pointRadius:0, pointHoverRadius:4,
+    segment:{
+      borderColor:ctx => (ctx.p0.parsed.y >= HOT_TEMP || ctx.p1.parsed.y >= HOT_TEMP) ? '#E5484D' : LC[i%LC.length],
+      borderWidth:ctx => (ctx.p0.parsed.y >= HOT_TEMP || ctx.p1.parsed.y >= HOT_TEMP) ? 2.6 : 1.9
+    }
   }));
   if(series.map[OUTDOOR_KEY]){
     datasets.push({
@@ -112,7 +141,7 @@ function mkTempChart(canvasId, legendId, series){
     data:{labels:DAYS, datasets},
     options:{
       responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+      plugins:{legend:{display:false},hotTempBand:{enabled:true},tooltip:{...TT,callbacks:{
         title:items=>`${items[0].label}일`,
         label:c=>` ${c.dataset.label}: ${c.parsed.y}℃`
       }}},
@@ -129,6 +158,7 @@ function mkTempChart(canvasId, legendId, series){
     if(lg){
       let html = innerNames.map((n,i)=>`<span><i style="background:${LC[i%LC.length]}"></i>${n}</span>`).join('');
       html += `<span><i style="background:#111827;height:0;border-top:2px dashed #111827;width:18px"></i>실외 최고기온</span>`;
+      html += `<span><i style="background:rgba(229,72,77,.18);border-top:1px dashed #E5484D;width:18px;height:8px"></i>28℃ 이상</span>`;
       lg.innerHTML = html;
     }
   }
@@ -161,6 +191,37 @@ function mkOperLine(canvasId, legendId, series){
   }
 }
 
+/* ── 가동시간 막대차트 ─────────────────────────────────────── */
+function mkOperBar(canvasId, legendId, series){
+  const el = document.getElementById(canvasId);
+  if(!el) return;
+  new Chart(el,{
+    type:'bar',
+    data:{labels:DAYS,datasets:series.names.map((label,i)=>({
+      label, data:series.map[label],
+      backgroundColor:i === 0 ? 'rgba(45,107,255,.72)' : 'rgba(229,72,77,.72)',
+      borderColor:i === 0 ? '#2D6BFF' : '#E5484D',
+      borderWidth:1,
+      borderRadius:4,
+      maxBarThickness:14
+    }))},
+    options:{
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+        title:items=>`${items[0].label}일`, label:c=>` ${c.dataset.label}: ${c.parsed.y}h`
+      }}},
+      scales:{
+        x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:9},color:tickColor()}},
+        y:{min:0,suggestedMax:7,ticks:{callback:v=>v+'h',font:{size:9.5}},grid:{color:'#EEF1F6'}}
+      }
+    }
+  });
+  if(legendId){
+    const lg = document.getElementById(legendId);
+    if(lg) lg.innerHTML = series.names.map((n,i)=>`<span><i style="background:${i === 0 ? '#2D6BFF' : '#E5484D'};height:8px"></i>${n}</span>`).join('');
+  }
+}
+
 /* ── 증감 표 자동 생성 ─────────────────────────────────────── */
 function fillIncreaseTable(tbodyId, rows){
   const tb = document.getElementById(tbodyId);
@@ -169,14 +230,26 @@ function fillIncreaseTable(tbodyId, rows){
     const zone = (r['HUB_NICKNAME'] || r['지역'] || '').replace(/^본사_/, '');
     const prev = num(r['총가동시간_시간_4월']) ?? num(r['전월']) ?? 0;
     const cur  = num(r['총가동시간_시간_5월']) ?? num(r['당월']) ?? 0;
-    const diff = +(cur - prev).toFixed(1);
-    const pct  = prev > 0 ? +((diff / prev) * 100).toFixed(1) : null;
-    return { zone, prev, cur, diff, pct };
-  }).sort((a,b)=>b.diff-a.diff);
+    const deviceCount = num(r['제어기_장치수']) ?? 0;
+    const prevAvg = num(r['장비당_일평균가동시간_시간_4월']) ?? 0;
+    const curAvg = num(r['장비당_일평균가동시간_시간_5월']) ?? 0;
+    const totalDiff = num(r['총가동시간_증감']) ?? +(cur - prev).toFixed(2);
+    const avgDiff = num(r['장비당_일평균가동시간_증감']) ?? +(curAvg - prevAvg).toFixed(2);
+    return { zone, deviceCount, prev, prevAvg, cur, curAvg, totalDiff, avgDiff };
+  }).sort((a,b)=>b.avgDiff-a.avgDiff);
   tb.innerHTML = data.map(r=>{
-    const pctTxt = r.pct==null ? '—' : `<span class="${r.pct>0?'risk':'ok-txt'}">${r.pct>0?'▲':'▼'} ${Math.abs(r.pct)}%</span>`;
-    const diffTxt = `<span class="${r.diff>0?'risk':'ok-txt'}">${r.diff>0?'+':''}${r.diff}</span>`;
-    return `<tr><td class="inc-zone"><strong>${r.zone}</strong></td><td class="num inc-num">${r.prev}</td><td class="num inc-num">${r.cur}</td><td class="num inc-num">${diffTxt}</td><td class="num inc-num">${pctTxt}</td></tr>`;
+    const totalDiffTxt = `<span class="${r.totalDiff>0?'risk':'ok-txt'}">${r.totalDiff>0?'+':''}${r.totalDiff}</span>`;
+    const avgDiffTxt = `<span class="${r.avgDiff>0?'risk':'ok-txt'}">${r.avgDiff>0?'+':''}${r.avgDiff}</span>`;
+    return `<tr>
+      <td class="inc-zone"><strong>${r.zone}</strong></td>
+      <td class="num inc-num">${r.deviceCount}</td>
+      <td class="num inc-num">${r.prev}</td>
+      <td class="num inc-num">${r.prevAvg}</td>
+      <td class="num inc-num">${r.cur}</td>
+      <td class="num inc-num">${r.curAvg}</td>
+      <td class="num inc-num">${totalDiffTxt}</td>
+      <td class="num inc-num">${avgDiffTxt}</td>
+    </tr>`;
   }).join('');
 }
 
@@ -231,8 +304,8 @@ async function main(){
   /* 가동시간 라인 */
   mkOperLine('c-oper-line', 'lg-oper', operZone);
 
-  /* 공간구분별 일평균 가동시간 라인 */
-  mkOperLine('c-oper-bar', 'lg-oper-space', operSpace);
+  /* 공간구분별 일평균 가동시간 막대 */
+  mkOperBar('c-oper-bar', 'lg-oper-space', operSpace);
 
   /* 증감 표 */
   fillIncreaseTable('incWorkB', incWork);
