@@ -136,11 +136,7 @@ function mkTempChart(canvasId, legendId, series){
     label, data:series.map[label],
     borderColor:LC[i%LC.length], backgroundColor:'transparent',
     borderWidth:1.9, fill:false, spanGaps:true, tension:.35,
-    pointRadius:0, pointHoverRadius:4,
-    segment:{
-      borderColor:ctx => (ctx.p0.parsed.y >= HOT_TEMP || ctx.p1.parsed.y >= HOT_TEMP) ? '#E5484D' : LC[i%LC.length],
-      borderWidth:ctx => (ctx.p0.parsed.y >= HOT_TEMP || ctx.p1.parsed.y >= HOT_TEMP) ? 2.6 : 1.9
-    }
+    pointRadius:0, pointHoverRadius:4
   }));
   if(series.map[OUTDOOR_KEY]){
     datasets.push({
