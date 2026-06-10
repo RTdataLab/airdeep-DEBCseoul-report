@@ -980,6 +980,15 @@ section {
    14. 인쇄 (PDF 저장)
    ══════════════════════════════════════════════════════════════ */
 @media print {
+  /* 인쇄 보강: 어떤 용지 폭에서도 데스크톱 레이아웃 유지 */
+  .summary-grid { grid-template-columns: 1.5fr 1fr !important; }
+  .kpi-grid { grid-template-columns: repeat(4,1fr) !important; }
+  .chart-2col { grid-template-columns: 1fr 1fr !important; }
+  .chart-3col { grid-template-columns: repeat(3,1fr) !important; }
+  .ov-grid { grid-template-columns: repeat(3,1fr) !important; }
+  .facility-grid { grid-template-columns: repeat(auto-fit,minmax(180px,1fr)) !important; }
+  .cw canvas { width: 100% !important; max-width: 100% !important; }
+
   html, body { background: #fff !important; }
   canvas { max-width: 100% !important; }
   body { background: #fff; padding: 0; }
