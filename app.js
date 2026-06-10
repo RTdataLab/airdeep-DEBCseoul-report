@@ -323,3 +323,16 @@ async function main(){
 }
 
 window.addEventListener('DOMContentLoaded', main);
+
+/* ── 인쇄: 리포트 전체를 세로로 긴 '한 페이지' PDF로 출력 ─────
+   인쇄 직전에 문서 높이를 측정해 그 크기의 커스텀 용지를 적용한다.
+   크롬 인쇄 대화상자에서 [대상: PDF로 저장] 그대로 출력하면 됨. */
+window.addEventListener('beforeprint', () => {
+  const PX2MM = 25.4 / 96;
+  const page = document.querySelector('.page') || document.body;
+  const wMm = Math.ceil(page.offsetWidth * PX2MM) + 20;                    // 좌우 여백 10mm씩
+  const hMm = Math.ceil(document.documentElement.scrollHeight * PX2MM) + 20;
+  let st = document.getElementById('one-page-print');
+  if(!st){ st = document.createElement('style'); st.id = 'one-page-print'; document.head.appendChild(st); }
+  st.textContent = `@page { size: ${wMm}mm ${hMm}mm; margin: 10mm; }`;
+});
