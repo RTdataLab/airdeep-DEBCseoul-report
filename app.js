@@ -6,7 +6,7 @@
    새로고침 시 리포트가 자동 갱신됩니다. (파일명이 바뀌면 설정표만 수정)
    ============================================================ */
 
-const DAYS = Array.from({length:31},(_,i)=>i+1);          // 5월 = 31일
+const DAYS = Array.from({length:30},(_,i)=>i+1);          // 6월 = 30일
 const LC   = ['#2D6BFF','#E5484D','#22C55E','#F59E0B','#7C3AED','#0F766E','#BE185D','#0EA5E9','#78716C','#DB2777'];
 const TT   = {backgroundColor:'#0B1220',titleColor:'#fff',bodyColor:'#E5E9F0',padding:10,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10,boxPadding:3};
 const OUTDOOR_KEY = '최고기온(℃)';
@@ -27,7 +27,7 @@ const DATA_FILES = {
 
 /* ✏️ 공휴일 날짜 — 주말(토·일)은 자동 계산되고, 여기엔 공휴일만 적으면 됩니다.
    해당 날짜의 x축 라벨이 빨간색으로 표시됩니다. (매달 이 줄만 갱신) */
-const PUBLIC_HOLIDAYS = ['2026-05-01', '2026-05-05', '2026-05-25']; // 근로자의날 · 어린이날 · 대체공휴일
+const PUBLIC_HOLIDAYS = []; // 2026년 6월 평일 공휴일은 확인 후 입력
 
 function isHolidayDate(s){
   const m = String(s ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -67,8 +67,12 @@ function num(v){
   const n = parseFloat(v);
   return Number.isNaN(n) ? null : n;
 }
-function toSeriesMap(rows){
-  const names = rows[0].slice(1);
+function toSeriesMap(rows, displayNames){
+  const rawNames = rows[0].slice(1);
+  const names = displayNames || rawNames.map((name, i) => {
+    const count = rawNames.slice(0, i).filter(v => v === name).length;
+    return count ? `${name}_${count + 1}` : name;
+  });
   const map = {}; names.forEach(n => map[n] = []);
   for(let r=1;r<rows.length;r++){
     names.forEach((n,ci)=> map[n].push(num(rows[r][ci+1])));
@@ -78,8 +82,30 @@ function toSeriesMap(rows){
 function toObjects(rows){
   const header = rows[0];
   return rows.slice(1).map(row=>{
-    const o = {}; header.forEach((h,i)=> o[h] = row[i] ?? ''); return o;
+    const o = {};
+    header.forEach((h,i)=> o[h] = row[i] ?? '');
+    o.__cells = row;
+    o.__header = header;
+    return o;
   });
+}
+function isOutdoorName(name){
+  const s = String(name || '');
+  return s === OUTDOOR_KEY || s.includes('최고기온') || s.includes('(℃)') || s === '????(?)';
+}
+function getOutdoorName(series){
+  return series.names.find(isOutdoorName);
+}
+function pick(row, keys, index, fallback=''){
+  if(row.__cells?.[index] !== undefined && row.__cells[index] !== '') return row.__cells[index];
+  for(const key of keys){
+    if(row[key] !== undefined && row[key] !== '') return row[key];
+  }
+  return fallback;
+}
+function applyRowLabels(rows, labels){
+  rows.forEach((row, i) => row.__displayZone = labels[i] || row.__displayZone);
+  return rows;
 }
 function fmtHours(v, signed=false){
   const n = num(v) ?? 0;
@@ -95,6 +121,25 @@ function fmtZoneName(v){
     .replace(/(\d)층/g, '$1층')
     .trim();
 }
+
+const SERIES_LABELS = {
+  tempZone: ['실외 최고기온','서울 1층','서울 2층','서울 3층','서울 6층','서울 7층','서울 별관'],
+  ctrlLow: ['1층 로비','1층 안내센터','2층 로비','2층 회의실','3층 회의실','별관 로비','실외 최고기온'],
+  ctrl6: ['6층 노조사무실','6층 본부장실','6층 사무실1','6층 사무실2','6층 사무실3','6층 이사장실','실외 최고기온'],
+  ctrl7: ['7층 본부장실1','7층 본부장실2','7층 사무실1','7층 사무실2','7층 사무실3','7층 회의실','실외 최고기온'],
+  operZone: ['서울 1층','서울 2층','서울 3층','서울 6층','서울 7층','서울 별관'],
+  operSpace: ['공용공간','사무실']
+};
+
+const INCREASE_ROW_LABELS = [
+  '서울 7층 사무실',
+  '서울 6층 사무실',
+  '서울 공용 2층',
+  '서울 1층 로비',
+  '서울 7층 회의실',
+  '서울 6층 본부장실',
+  '서울 별관'
+];
 
 /* ── 주말·공휴일 x축 라벨 빨강 처리용 콜백 ────────────────── */
 function tickColor(){
@@ -131,16 +176,17 @@ function mkTempChart(canvasId, legendId, series){
   const el = document.getElementById(canvasId);
   if(!el) return;
   // 실외 계열은 검은 점선, 나머지는 컬러 실선
-  const innerNames = series.names.filter(n => n !== OUTDOOR_KEY);
+  const outdoorName = getOutdoorName(series);
+  const innerNames = series.names.filter(n => n !== outdoorName);
   const datasets = innerNames.map((label,i)=>({
     label, data:series.map[label],
     borderColor:LC[i%LC.length], backgroundColor:'transparent',
     borderWidth:1.9, fill:false, spanGaps:true, tension:.35,
     pointRadius:0, pointHoverRadius:4
   }));
-  if(series.map[OUTDOOR_KEY]){
+  if(outdoorName && series.map[outdoorName]){
     datasets.push({
-      label:'실외 최고기온', data:series.map[OUTDOOR_KEY],
+      label:'실외 최고기온', data:series.map[outdoorName],
       borderColor:'#111827', backgroundColor:'transparent',
       borderWidth:2, borderDash:[5,4], fill:false, spanGaps:true, tension:.35,
       pointRadius:0, pointHoverRadius:4
@@ -237,14 +283,14 @@ function fillIncreaseTable(tbodyId, rows){
   const tb = document.getElementById(tbodyId);
   if(!tb) return;
   const data = rows.map(r=>{
-    const zone = fmtZoneName(r['HUB_NICKNAME'] || r['지역'] || '');
-    const prev = num(r['총가동시간_시간_4월']) ?? num(r['전월']) ?? 0;
-    const cur  = num(r['총가동시간_시간_5월']) ?? num(r['당월']) ?? 0;
-    const deviceCount = num(r['제어기_장치수']) ?? 0;
-    const prevAvg = num(r['장비당_일평균가동시간_시간_4월']) ?? 0;
-    const curAvg = num(r['장비당_일평균가동시간_시간_5월']) ?? 0;
-    const totalDiff = num(r['총가동시간_증감']) ?? +(cur - prev).toFixed(2);
-    const avgDiff = num(r['장비당_일평균가동시간_증감']) ?? +(curAvg - prevAvg).toFixed(2);
+    const zone = r.__displayZone || fmtZoneName(pick(r, ['HUB_NICKNAME', '지역'], 2));
+    const prev = num(pick(r, ['총가동시간_시간_4월', '총가동시간_시간_5월', '전월'], 4)) ?? 0;
+    const prevAvg = num(pick(r, ['장비당_일평균가동시간_시간_4월', '장비당_일평균가동시간_시간_5월'], 5)) ?? 0;
+    const cur  = num(pick(r, ['총가동시간_시간_5월', '총가동시간_시간_6월', '당월'], 6)) ?? 0;
+    const curAvg = num(pick(r, ['장비당_일평균가동시간_시간_5월', '장비당_일평균가동시간_시간_6월'], 7)) ?? 0;
+    const deviceCount = num(pick(r, ['제어기_장치수'], 3)) ?? 0;
+    const totalDiff = num(pick(r, ['총가동시간_증감'], 8)) ?? +(cur - prev).toFixed(2);
+    const avgDiff = num(pick(r, ['장비당_일평균가동시간_증감'], 9)) ?? +(curAvg - prevAvg).toFixed(2);
     return { zone, deviceCount, prev, prevAvg, cur, curAvg, totalDiff, avgDiff };
   }).sort((a,b)=>b.avgDiff-a.avgDiff);
   tb.innerHTML = data.map(r=>{
@@ -295,14 +341,14 @@ async function main(){
       const m = String(r[0] ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if(m && isHolidayDate(m[0])) HOLIDAYS.add(Number(m[3]));
     });
-    tempZone  = toSeriesMap(tempRows);
-    ctrlLow   = toSeriesMap(parseCSV(txt.ctrlLow));
-    ctrl6     = toSeriesMap(parseCSV(txt.ctrl6));
-    ctrl7     = toSeriesMap(parseCSV(txt.ctrl7));
-    operZone  = toSeriesMap(parseCSV(txt.operZone));
-    operSpace = toSeriesMap(parseCSV(txt.operSpace));
-    incWork   = toObjects(parseCSV(txt.incWork));
-    incOff    = toObjects(parseCSV(txt.incOff));
+    tempZone  = toSeriesMap(tempRows, SERIES_LABELS.tempZone);
+    ctrlLow   = toSeriesMap(parseCSV(txt.ctrlLow), SERIES_LABELS.ctrlLow);
+    ctrl6     = toSeriesMap(parseCSV(txt.ctrl6), SERIES_LABELS.ctrl6);
+    ctrl7     = toSeriesMap(parseCSV(txt.ctrl7), SERIES_LABELS.ctrl7);
+    operZone  = toSeriesMap(parseCSV(txt.operZone), SERIES_LABELS.operZone);
+    operSpace = toSeriesMap(parseCSV(txt.operSpace), SERIES_LABELS.operSpace);
+    incWork   = applyRowLabels(toObjects(parseCSV(txt.incWork)), INCREASE_ROW_LABELS);
+    incOff    = applyRowLabels(toObjects(parseCSV(txt.incOff)), INCREASE_ROW_LABELS);
   } catch(e){ showError('CSV 파싱 중 오류: ' + e.message); return; }
 
   /* 온도 그래프 (실외 점선) */

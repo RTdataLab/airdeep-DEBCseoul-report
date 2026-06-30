@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" as="style" crossorigin
   href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="style.css?v=20260609-a4fix">
+<link rel="stylesheet" href="style.css?v=20260630">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 /* 표 헤더 디자인 통일 (전국 리포트와 동일) */
@@ -31,7 +31,7 @@
   <div class="hdr-meta">
     <div class="hdr-badge">🏢 서울 본사 전용 리포트</div>
     <div class="hdr-meta-right">
-      <div class="hdr-period">기간<strong>2026.05.01 — 2026.05.31</strong></div>
+      <div class="hdr-period">기간<strong>2026.06.01 — 2026.06.30</strong></div>
       <div class="provided-by">보고서 제공 · AirDeep</div>
     </div>
   </div>
@@ -54,22 +54,22 @@
         </div>
         <div class="kpi">
           <div class="kpi-label">평균 실내온도</div>
-          <div class="kpi-value">25.2<span class="kpi-unit">℃</span></div>
-          <div class="kpi-delta up">▲ 3.3℃</div>
+          <div class="kpi-value">24.8<span class="kpi-unit">℃</span></div>
+          <div class="kpi-delta flat">6월 평균</div>
         </div>
         <div class="kpi">
           <div class="kpi-label">일평균 가동시간</div>
-          <div class="kpi-value">2.0<span class="kpi-unit">h</span></div>
-          <div class="kpi-delta dn">▼ 0.3h</div>
+          <div class="kpi-value">1.6<span class="kpi-unit">h</span></div>
+          <div class="kpi-delta flat">구역 평균</div>
         </div>
         <div class="kpi">
           <div class="kpi-label">적정온도 유지율</div>
-          <div class="kpi-value">73<span class="kpi-unit">%</span></div>
-          <div class="kpi-delta dn">▼ 3%p</div>
+          <div class="kpi-value">86<span class="kpi-unit">%</span></div>
+          <div class="kpi-delta up">20–26℃ 기준</div>
         </div>
       </div>
       <div class="cmnt" style="margin-top:14px"><div class="cmnt-bar" style="background:#2D6BFF"></div>
-        <div class="cmnt-text">5월은 외기온 상승과 함께 냉방 수요가 본격화된 달로, 6층 사무실 근무시간 가동이 전월 대비 78% 급증하며 가장 높은 운전 강도를 기록했습니다. 적정온도 유지율 73% 유지를 위한 냉방 스케줄 점검과 근무시간 외 자동 종료 설정이 이달의 우선 과제입니다.</div>
+        <div class="cmnt-text">6월 서울 본사는 평균 실내온도 24.8℃, 적정온도 유지율 86%로 전반적인 온도 관리는 안정적이었습니다. 다만 가동시간은 7층(일평균 3.03h)과 6층(2.59h)에 집중되었고, 전월 대비 근무시간 가동 증가는 6층 사무실(+130.8h, 장비당 +1.09h)이 가장 커서 상시 가동 공간 중심의 스케줄 점검이 필요합니다.</div>
       </div>
     </div>
     <div class="alerts">
@@ -79,15 +79,15 @@
       </div>
       <div class="alert-item">
         <div class="alert-tag tag-c">ACTION</div>
-        <div class="alert-body"><strong>서울본사 6층 사무실</strong> · 근무시간 내 총가동 437.67h로 전월(245.42h) 대비 +192h(+78%) 급증 — 냉방 스케줄 및 설정온도 점검 필요</div>
+        <div class="alert-body"><strong>서울본사 6층 사무실</strong> · 평일 근무시간 총가동 280.8h로 전월 150.0h 대비 +130.8h, 장비당 일평균도 +1.09h 증가 — 이달 가장 큰 장비당 증가 구역</div>
       </div>
       <div class="alert-item">
         <div class="alert-tag tag-c">CHECK</div>
-        <div class="alert-body"><strong>서울본사 6층 사무실</strong> · 근무시간 외 가동 100.75h로 전월(30.83h) 대비 +69.92h(+227%) — 야간 자동 종료 설정 확인 필요</div>
+        <div class="alert-body"><strong>서울본사 7층 사무실</strong> · 구역별 일평균 가동시간 3.03h로 가장 높고, 6월 30일에는 5.64h까지 상승 — 상시 가동 패턴 확인 필요</div>
       </div>
       <div class="alert-item">
         <div class="alert-tag tag-w">WARN</div>
-        <div class="alert-body"><strong>서울본사 전체</strong> · 5월 적정온도(20–26℃) 유지율 73%로 전월 대비 하락 — 5월 중순 이후 외기 상승에 따른 냉방 대응 강화 필요</div>
+        <div class="alert-body"><strong>서울본사 7층·6층</strong> · 구역 평균온도는 7층 25.8℃, 6층 25.6℃로 상위권이며 일부 제어기는 27℃대까지 상승 — 고온 구간 모니터링 필요</div>
       </div>
     </div>
   </div>
@@ -144,7 +144,7 @@
     <div class="legend-row" id="lg-zone"></div>
     <div class="cw h260"><canvas id="c-temp-zone"></canvas></div>
     <div class="cmnt"><div class="cmnt-bar" style="background:#2D6BFF"></div>
-      <div class="cmnt-text">서울 본사 전체 구역의 5월 일평균 실내 온도는 대체로 22~26℃ 내외에서 유지되었습니다. 실외 최고기온이 상승함에 따라 실내온도 평균도 대체로 상승하는 경향이 확인되었습니다. 그러나 5월 14~15일 서울 최고기온이 31℃ 이상을 기록한 구간에서 3층과 6층은 다른 구역 대비 낮은 실내온도 평균을 유지하였으며, 특히 6층은 실외 최고기온 대비 약 8℃ 낮은 수준을 보였습니다.</div>
+      <div class="cmnt-text">6월 구역별 일평균 실내온도는 전체 평균 24.8℃로 적정 범위에 머물렀습니다. 7층(25.8℃)과 6층(25.6℃)이 가장 높았고, 1층은 24.0℃로 가장 낮았습니다. 실외 최고기온은 6월 30일 28.4℃까지 올랐지만 구역 평균 기준 28℃ 이상 실내 고온 구간은 발생하지 않아, 냉방 대응은 전반적으로 유지된 것으로 보입니다.</div>
     </div>
   </div>
 
@@ -157,21 +157,21 @@
     <div class="legend-row" id="lg-ctrl-low"></div>
     <div class="cw h220"><canvas id="c-temp-ctrl-low"></canvas></div>
     <div class="cmnt"><div class="cmnt-bar" style="background:#7C3AED"></div>
-      <div class="cmnt-text">제어기 위치별로 살펴보면 동일 층 내에서도 제어기별 온도 편차가 나타납니다. 2층 회의실과 1층 로비는 전반적으로 다른 구역 대비 낮은 실내 평균온도를 보였으며, 월말 고온 구간에서는 3층 회의실도 비교적 낮게 유지되었습니다.</div>
+      <div class="cmnt-text">1·2·3층·별관 제어기는 대부분 24℃대에서 안정적으로 유지되었습니다. 별관 로비가 평균 24.8℃로 가장 높고, 2층 회의실은 6월 1일 26.0℃까지 상승했지만 이후 월평균은 24.6℃ 수준이었습니다. 하부층에서는 고온보다 구역 간 냉방 균형 확인이 핵심입니다.</div>
     </div>
 
     <div class="chart-sub-title" style="margin-top:20px">본사 6층</div>
     <div class="legend-row" id="lg-ctrl-6f"></div>
     <div class="cw h220"><canvas id="c-temp-ctrl-6f"></canvas></div>
     <div class="cmnt"><div class="cmnt-bar" style="background:#7C3AED"></div>
-      <div class="cmnt-text">제어기 위치별로 살펴보면 동일 층 내에서도 제어기별 온도 편차가 나타납니다. 6층 사무실1, 6층 사무실2, 6층 사무실3은 실외 고온 구간에서 낮은 실내 평균온도를 보였으며, 본부장실·이사장실 대비 낮게 유지되는 구간이 많았습니다.</div>
+      <div class="cmnt-text">6층은 제어기별 평균이 대체로 25℃대 중후반으로, 다른 층보다 높은 편입니다. 본부장실 계열 제어기가 평균 26.0℃, 6월 3일 최고 27.6℃로 가장 높았고 사무실1·2도 평균 25.7℃를 기록했습니다. 가동시간 증가가 큰 층인 만큼 설정온도와 운전시간을 함께 점검할 필요가 있습니다.</div>
     </div>
 
     <div class="chart-sub-title" style="margin-top:20px">본사 7층</div>
     <div class="legend-row" id="lg-ctrl-7f"></div>
     <div class="cw h220"><canvas id="c-temp-ctrl-7f"></canvas></div>
     <div class="cmnt"><div class="cmnt-bar" style="background:#7C3AED"></div>
-      <div class="cmnt-text">제어기 위치별로 살펴보면 동일 층 내에서도 제어기별 온도 편차가 나타납니다. 7층 본부장실1과 7층 본부장실2는 고온일에 다른 사무실·회의실 대비 상대적으로 낮은 실내 평균온도를 유지하는 경향을 보였습니다.</div>
+      <div class="cmnt-text">7층은 사무실2 평균 26.0℃, 사무실1 평균 25.9℃로 사무실 구역이 가장 높게 나타났습니다. 6월 1일 사무실1은 27.2℃, 사무실2는 27.1℃까지 상승해 월초 고온 구간이 확인됩니다. 7층은 가동시간도 가장 길어 온도 쾌적성과 사용량을 동시에 관리해야 합니다.</div>
     </div>
   </div>
 </section>
@@ -189,7 +189,7 @@
     <div class="legend-row" id="lg-oper"></div>
     <div class="cw h260"><canvas id="c-oper-line"></canvas></div>
     <div class="cmnt"><div class="cmnt-bar" style="background:#2D6BFF"></div>
-      <div class="cmnt-text">5월 대부분의 일자에서 구역별 냉난방기 가동이 확인되었으며, 서울 실외 최고기온이 30℃ 이상으로 상승한 5월 14~15일 전후에 실내온도 평균도 함께 상승하는 경향을 보였습니다. 특히 이 시기에는 2층과 3층의 냉난방기 가동시간이 급격히 증가하여, 외기 온도 상승에 따른 냉방 수요 증가가 가동시간 변화에 반영된 것으로 확인됩니다.</div>
+      <div class="cmnt-text">6월 구역별 일평균 가동시간은 전체 평균 1.6h입니다. 7층이 3.03h로 가장 길고 6층이 2.59h로 뒤를 이었으며, 두 구역 모두 6월 30일 각각 5.64h, 4.80h까지 상승했습니다. 월말 외기 최고기온 28.4℃ 구간에서 사무실층 중심의 냉방 사용이 뚜렷하게 늘어난 흐름입니다.</div>
     </div>
   </div>
 
@@ -199,7 +199,7 @@
     <div class="legend-row" id="lg-oper-space"></div>
     <div class="cw h220"><canvas id="c-oper-bar"></canvas></div>
     <div class="cmnt"><div class="cmnt-bar" style="background:#2D6BFF"></div>
-      <div class="cmnt-text">본관 6층과 7층은 사무실, 나머지 공간인 본관 1층, 2층, 3층 및 별관은 공용공간으로 구분하여 공간 구분별 일평균 냉난방기 가동시간을 산출했습니다. 두 공간 유형 모두 5월 중순 이후 외기온 상승에 따라 가동시간이 증가하는 경향을 보였으며, 특히 사무실의 가동시간이 공용공간보다 전반적으로 높게 나타났습니다. 이는 사무실 상주 인원 및 사용 빈도가 높아 냉방 수요가 상대적으로 크게 발생한 결과로 보입니다.</div>
+      <div class="cmnt-text">공간 구분별로는 사무실의 일평균 가동시간이 2.36h로 공용공간 1.13h의 약 2.1배입니다. 두 유형 모두 6월 30일에 최대치(사무실 4.50h, 공용공간 2.35h)를 보였고, 사무실 중심의 상주 사용 패턴이 냉방 운전시간을 끌어올린 것으로 보입니다.</div>
     </div>
   </div>
 
@@ -212,7 +212,7 @@
       <tbody id="incWorkB"></tbody>
     </table>
     <div class="cmnt"><div class="cmnt-bar" style="background:#E5484D"></div>
-      <div class="cmnt-text">공간별 장치 수 차이를 고려할 때, 전월 대비 냉난방기 사용량은 총가동시간 증감뿐만 아니라 장비당 일평균 가동시간 증감도 함께 검토할 필요가 있습니다. 평일 근무시간 기준 서울 본사는 대부분의 구역에서 4월 대비 5월 가동시간이 증가했으며, 특히 6층 사무실은 총가동시간과 장비당 일평균 가동시간 모두 가장 큰 증가폭을 보였습니다. 전반적으로 사무실과 회의실 중심으로 냉난방기 사용량이 증가한 것으로 보입니다.</div>
+      <div class="cmnt-text">평일 근무시간 기준 전월 대비 증가는 6층 사무실이 총 +130.8h, 장비당 일평균 +1.09h로 가장 큽니다. 총 증가량만 보면 7층 사무실도 +160.2h로 가장 큰 폭을 보였지만 장치 수를 반영하면 6층의 상승 강도가 더 두드러집니다. 공용 2층(+46.0h, 장비당 +0.77h)과 공용 1층 로비(+38.0h, 장비당 +0.63h)도 함께 점검 대상입니다.</div>
     </div>
   </div>
 
@@ -225,7 +225,7 @@
       <tbody id="incOffB"></tbody>
     </table>
     <div class="cmnt"><div class="cmnt-bar" style="background:#E5484D"></div>
-      <div class="cmnt-text">평일 근무시간외 기준으로는 별관, 1층, 2층을 제외한 대부분의 구역에서 전월 대비 냉난방기 가동시간이 증가하였습니다. 특히 6층 사무실은 총가동시간이 약 70시간 증가했으며, 장비당 일평균 가동시간도 1.05시간 증가하여 근무시간 외 사용 증가가 가장 두드러졌습니다. 근무시간 외 냉난방기 사용은 불필요한 에너지 소비로 이어질 수 있으므로, 퇴실 후 전원 OFF 여부 점검 등 관리가 필요합니다.</div>
+      <div class="cmnt-text">평일 근무시간외 기준으로도 6층 사무실이 장비당 일평균 +0.31h로 가장 크게 증가했습니다. 총가동시간 증가는 7층 사무실이 +44.86h로 가장 크고, 6층 사무실은 +36.62h입니다. 근무시간 외 사용 증가는 자동 종료 설정, 퇴실 후 OFF 여부, 반복 가동 시간대 확인이 우선입니다.</div>
     </div>
   </div>
 </section>
@@ -239,6 +239,6 @@
 </div>
 
 
-<script src="app.js?v=20260609-a4"></script>
+<script src="app.js?v=20260630"></script>
 </body>
 </html>
