@@ -96,6 +96,24 @@ function isOutdoorName(name){
 function getOutdoorName(series){
   return series.names.find(isOutdoorName);
 }
+function seriesValues(series){
+  return series.names.flatMap(name => (series.map[name] || []).filter(v => Number.isFinite(v)));
+}
+function scaleForValues(values, {unit='', minAtZero=false, minPad=1}={}){
+  const nums = values.filter(v => Number.isFinite(v));
+  if(!nums.length) return {ticks:{callback:v=>`${v}${unit}`,font:{size:9.5}},grid:{color:'#EEF1F6'}};
+  let lo = Math.min(...nums), hi = Math.max(...nums);
+  const spread = Math.max(hi - lo, minPad);
+  let min = minAtZero ? 0 : Math.floor((lo - spread * 0.18) * 2) / 2;
+  let max = Math.ceil((hi + spread * 0.18) * 2) / 2;
+  if(max <= min) max = min + minPad;
+  return {
+    min,
+    max,
+    ticks:{callback:v=>`${v}${unit}`,font:{size:9.5}},
+    grid:{color:'#EEF1F6'}
+  };
+}
 function pick(row, keys, index, fallback=''){
   if(row.__cells?.[index] !== undefined && row.__cells[index] !== '') return row.__cells[index];
   for(const key of keys){
@@ -175,6 +193,7 @@ Chart.register(hotTempBandPlugin);
 function mkTempChart(canvasId, legendId, series){
   const el = document.getElementById(canvasId);
   if(!el) return;
+  const yScale = scaleForValues(seriesValues(series), {unit:'℃', minPad:2});
   // 실외 계열은 검은 점선, 나머지는 컬러 실선
   const outdoorName = getOutdoorName(series);
   const innerNames = series.names.filter(n => n !== outdoorName);
@@ -203,7 +222,7 @@ function mkTempChart(canvasId, legendId, series){
       }}},
       scales:{
         x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:9},color:tickColor()}},
-        y:{min:14,suggestedMax:34,ticks:{callback:v=>v+'℃',font:{size:9.5}},grid:{color:'#EEF1F6'}}
+        y:yScale
       },
       elements:{line:{tension:.35}}
     }
@@ -224,6 +243,7 @@ function mkTempChart(canvasId, legendId, series){
 function mkOperLine(canvasId, legendId, series){
   const el = document.getElementById(canvasId);
   if(!el) return;
+  const yScale = scaleForValues(seriesValues(series), {unit:'h', minAtZero:true, minPad:1});
   new Chart(el,{
     type:'line',
     data:{labels:DAYS,datasets:series.names.map((label,i)=>({
@@ -237,7 +257,7 @@ function mkOperLine(canvasId, legendId, series){
       }}},
       scales:{
         x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:9},color:tickColor()}},
-        y:{min:0,suggestedMax:7,ticks:{callback:v=>v+'h',font:{size:9.5}},grid:{color:'#EEF1F6'}}
+        y:yScale
       }
     }
   });
@@ -251,6 +271,7 @@ function mkOperLine(canvasId, legendId, series){
 function mkOperBar(canvasId, legendId, series){
   const el = document.getElementById(canvasId);
   if(!el) return;
+  const yScale = scaleForValues(seriesValues(series), {unit:'h', minAtZero:true, minPad:1});
   new Chart(el,{
     type:'bar',
     data:{labels:DAYS,datasets:series.names.map((label,i)=>({
@@ -268,7 +289,7 @@ function mkOperBar(canvasId, legendId, series){
       }}},
       scales:{
         x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:9},color:tickColor()}},
-        y:{min:0,suggestedMax:7,ticks:{callback:v=>v+'h',font:{size:9.5}},grid:{color:'#EEF1F6'}}
+        y:yScale
       }
     }
   });
