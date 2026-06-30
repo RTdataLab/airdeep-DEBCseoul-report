@@ -6,7 +6,7 @@
    새로고침 시 리포트가 자동 갱신됩니다. (파일명이 바뀌면 설정표만 수정)
    ============================================================ */
 
-const DAYS = Array.from({length:30},(_,i)=>i+1);          // 6월 = 30일
+const DAYS = Array.from({length:30},(_,i)=>i+1);          // 4월 = 30일
 const LC   = ['#2D6BFF','#E5484D','#22C55E','#F59E0B','#7C3AED','#0F766E','#BE185D','#0EA5E9','#78716C','#DB2777'];
 const TT   = {backgroundColor:'#0B1220',titleColor:'#fff',bodyColor:'#E5E9F0',padding:10,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10,boxPadding:3};
 const OUTDOOR_KEY = '최고기온(℃)';
@@ -21,13 +21,13 @@ const DATA_FILES = {
   ctrl7:     '3-2.3.csv',  // 섹션3-2-3 — 7층 제어기 온도
   operZone:  '4-1.csv',    // 섹션4-1 — 구역별 일평균 가동시간
   operSpace: '4-2.csv',    // 섹션4-2 — 공간구분별 일평균 가동시간
-  incWork:   '4-3.csv',    // 섹션4-3 — 전월대비 증가(근무시간)
-  incOff:    '4-4.csv'     // 섹션4-4 — 전월대비 증가(근무외)
+  incWork:   '4-3.csv',    // 섹션4-3 — 사용량/전월대비(근무시간)
+  incOff:    '4-4.csv'     // 섹션4-4 — 사용량/전월대비(근무외)
 };
 
 /* ✏️ 공휴일 날짜 — 주말(토·일)은 자동 계산되고, 여기엔 공휴일만 적으면 됩니다.
    해당 날짜의 x축 라벨이 빨간색으로 표시됩니다. (매달 이 줄만 갱신) */
-const PUBLIC_HOLIDAYS = []; // 2026년 6월 평일 공휴일은 확인 후 입력
+const PUBLIC_HOLIDAYS = []; // 2026년 4월 평일 공휴일 없음
 
 function isHolidayDate(s){
   const m = String(s ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -60,7 +60,7 @@ function parseCSV(text){
     }
     cells.push(cur);
     return cells.map(s => s.trim());
-  });
+  }).filter((row, i) => i === 0 || row.some(c => String(c).replace(/\t/g, '').trim() !== ''));
 }
 function num(v){
   if(v === undefined || v === null || v === '') return null;
@@ -282,8 +282,27 @@ function mkOperBar(canvasId, legendId, series){
 function fillIncreaseTable(tbodyId, rows){
   const tb = document.getElementById(tbodyId);
   if(!tb) return;
+  const hasCompare = rows.some(r => {
+    const cur = pick(r, ['총가동시간_시간_5월', '총가동시간_시간_6월', '당월'], 6);
+    const diff = pick(r, ['총가동시간_증감'], 8);
+    return cur !== '' || diff !== '';
+  });
+  const table = tb.closest('table');
+  if(table && !hasCompare){
+    const cg = table.querySelector('colgroup');
+    if(cg) cg.innerHTML = '<col class="inc-col-zone"><col class="inc-col-count"><col class="inc-col-num"><col class="inc-col-num">';
+    const head = table.querySelector('thead tr');
+    if(head) head.innerHTML = '<th>구역</th><th>제어기 수</th><th>4월 총 가동시간</th><th>장비당 일평균</th>';
+  }
   const data = rows.map(r=>{
-    const zone = r.__displayZone || fmtZoneName(pick(r, ['HUB_NICKNAME', '지역'], 2));
+    const rawZone = fmtZoneName(pick(r, ['HUB_NICKNAME', '지역'], 2));
+    const zone = hasCompare ? (r.__displayZone || rawZone) : rawZone;
+    if(!hasCompare){
+      const deviceCount = num(pick(r, ['제어기_장치수'], 3)) ?? 0;
+      const cur = num(pick(r, ['총가동시간_시간_4월', '총가동시간_시간'], 4)) ?? 0;
+      const curAvg = num(pick(r, ['장비당_일평균가동시간_시간_4월', '장비당_일평균가동시간_시간'], 5)) ?? 0;
+      return { zone, deviceCount, cur, curAvg };
+    }
     const prev = num(pick(r, ['총가동시간_시간_4월', '총가동시간_시간_5월', '전월'], 4)) ?? 0;
     const prevAvg = num(pick(r, ['장비당_일평균가동시간_시간_4월', '장비당_일평균가동시간_시간_5월'], 5)) ?? 0;
     const cur  = num(pick(r, ['총가동시간_시간_5월', '총가동시간_시간_6월', '당월'], 6)) ?? 0;
@@ -292,8 +311,16 @@ function fillIncreaseTable(tbodyId, rows){
     const totalDiff = num(pick(r, ['총가동시간_증감'], 8)) ?? +(cur - prev).toFixed(2);
     const avgDiff = num(pick(r, ['장비당_일평균가동시간_증감'], 9)) ?? +(curAvg - prevAvg).toFixed(2);
     return { zone, deviceCount, prev, prevAvg, cur, curAvg, totalDiff, avgDiff };
-  }).sort((a,b)=>b.avgDiff-a.avgDiff);
+  }).sort((a,b)=>hasCompare ? b.avgDiff-a.avgDiff : b.curAvg-a.curAvg);
   tb.innerHTML = data.map(r=>{
+    if(!hasCompare){
+      return `<tr>
+        <td class="inc-zone"><strong>${r.zone}</strong></td>
+        <td class="num inc-num">${r.deviceCount}</td>
+        <td class="num inc-num">${fmtHours(r.cur)}</td>
+        <td class="num inc-num">${fmtHours(r.curAvg)}</td>
+      </tr>`;
+    }
     const totalDiffTxt = `<span class="${r.totalDiff>0?'risk':'ok-txt'}">${fmtHours(r.totalDiff, true)}</span>`;
     const avgDiffTxt = `<span class="${r.avgDiff>0?'risk':'ok-txt'}">${fmtHours(r.avgDiff, true)}</span>`;
     return `<tr>
