@@ -7,6 +7,9 @@
 🔗 **라이브 주소(보는 곳):** https://rtdatalab.github.io/airdeep-DEBCseoul-report/
 📦 **저장소 주소:** https://github.com/RTdataLab/airdeep-DEBCseoul-report.git
 
+
+> ⭐ **매달 작업은 [`PROMPT.md`](PROMPT.md) 의 복붙용 프롬프트를 쓰세요.** CSV만 주고 그 글을 Codex에 붙여넣으면 끝납니다.
+
 ---
 
 ## 🗂 파일 구조 (뭘 어디서 고치나)
