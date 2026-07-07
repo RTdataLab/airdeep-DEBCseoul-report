@@ -21,8 +21,9 @@ const DATA_FILES = {
   ctrl7:     '3-2.3.csv',  // 섹션3-2-3 — 7층 제어기 온도
   operZone:  '4-1.csv',    // 섹션4-1 — 구역별 일평균 가동시간
   operSpace: '4-2.csv',    // 섹션4-2 — 공간구분별 일평균 가동시간
-  incWork:   '4-3.csv',    // 섹션4-3 — 사용량/전월대비(근무시간)
-  incOff:    '4-4.csv'     // 섹션4-4 — 사용량/전월대비(근무외)
+  operReserve:'4-3.csv',   // 섹션4-3 — 공용공간 자동 꺼짐 예약 전후 비교
+  incWork:   '4-4.csv',    // 섹션4-4 — 사용량/전월대비(근무시간)
+  incOff:    '4-5.csv'     // 섹션4-5 — 사용량/전월대비(근무외)
 };
 
 /* ✏️ 공휴일 날짜 — 주말(토·일)은 자동 계산되고, 여기엔 공휴일만 적으면 됩니다.
@@ -305,6 +306,57 @@ function mkOperBar(canvasId, legendId, series){
   }
 }
 
+/* ── 예약 전후 비교 혼합차트 (막대=가동시간 · 선=감소율) ───── */
+function mkReserveChart(canvasId, legendId, rows){
+  const el = document.getElementById(canvasId);
+  if(!el) return;
+  const labels = rows.map(r => r['공간']);
+  const before = rows.map(r => num(r['예약 전 일평균 가동시간']));
+  const after  = rows.map(r => num(r['예약 후 일평균 가동시간']));
+  const rate   = rows.map(r => num(r['감소율(%)']));
+  const LBL_BEFORE = '예약 전 일평균 가동시간(6/1~6/15)';
+  const LBL_AFTER  = '예약 후 일평균 가동시간(6/16~6/30)';
+  const LBL_RATE   = '감소율(%)';
+  new Chart(el,{
+    data:{labels, datasets:[
+      {type:'bar', label:LBL_BEFORE, data:before, yAxisID:'y',
+       backgroundColor:'rgba(45,107,255,.72)', borderColor:'#2D6BFF',
+       borderWidth:1, borderRadius:4, maxBarThickness:44},
+      {type:'bar', label:LBL_AFTER, data:after, yAxisID:'y',
+       backgroundColor:'rgba(34,197,94,.72)', borderColor:'#22C55E',
+       borderWidth:1, borderRadius:4, maxBarThickness:44},
+      {type:'line', label:LBL_RATE, data:rate, yAxisID:'y2',
+       borderColor:'#E5484D', backgroundColor:'#E5484D',
+       borderWidth:2, tension:0, fill:false,
+       pointRadius:4, pointHoverRadius:5, pointStyle:'circle'}
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+        label:c => c.dataset.yAxisID === 'y2'
+          ? ` ${c.dataset.label}: ${c.parsed.y}%`
+          : ` ${c.dataset.label}: ${c.parsed.y}h`
+      }}},
+      scales:{
+        x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:10.5}}},
+        y:{position:'left', beginAtZero:true,
+           title:{display:true,text:'일평균 가동시간(시간)',font:{size:10}},
+           ticks:{callback:v=>`${v}h`,font:{size:9.5}}, grid:{color:'#EEF1F6'}},
+        y2:{position:'right', beginAtZero:true, max:100,
+           title:{display:true,text:'감소율(%)',font:{size:10}},
+           ticks:{callback:v=>`${v}%`,font:{size:9.5}}, grid:{drawOnChartArea:false}}
+      }
+    }
+  });
+  if(legendId){
+    const lg = document.getElementById(legendId);
+    if(lg) lg.innerHTML =
+      `<span><i style="background:#2D6BFF;height:8px"></i>${LBL_BEFORE}</span>`+
+      `<span><i style="background:#22C55E;height:8px"></i>${LBL_AFTER}</span>`+
+      `<span><i style="background:#E5484D;height:2px;width:18px;border-radius:0"></i>${LBL_RATE} · 보조축</span>`;
+  }
+}
+
 /* ── 증감 표 자동 생성 ─────────────────────────────────────── */
 function fillIncreaseTable(tbodyId, rows){
   const tb = document.getElementById(tbodyId);
@@ -380,7 +432,7 @@ async function main(){
   Chart.defaults.font.size = 11;
   Chart.defaults.color = '#5B6577';
 
-  const keys = ['tempZone','ctrlLow','ctrl6','ctrl7','operZone','operSpace','incWork','incOff'];
+  const keys = ['tempZone','ctrlLow','ctrl6','ctrl7','operZone','operSpace','operReserve','incWork','incOff'];
   let txt = {};
   try {
     const res = await Promise.all(keys.map(k=>fetch(dataUrl(DATA_FILES[k]))));
@@ -389,7 +441,7 @@ async function main(){
     keys.forEach((k,i)=> txt[k] = texts[i]);
   } catch(e){ showError(e.message); return; }
 
-  let tempZone, ctrlLow, ctrl6, ctrl7, operZone, operSpace, incWork, incOff;
+  let tempZone, ctrlLow, ctrl6, ctrl7, operZone, operSpace, operReserve, incWork, incOff;
   try {
     const tempRows = parseCSV(txt.tempZone);
     // 주말·공휴일 자동 계산 (날짜 열 기준) → x축 라벨 빨강 처리
@@ -404,6 +456,7 @@ async function main(){
     ctrl7     = toSeriesMap(parseCSV(txt.ctrl7), SERIES_LABELS.ctrl7);
     operZone  = toSeriesMap(parseCSV(txt.operZone), SERIES_LABELS.operZone);
     operSpace = toSeriesMap(parseCSV(txt.operSpace), SERIES_LABELS.operSpace);
+    operReserve = toObjects(parseCSV(txt.operReserve));
     incWork   = applyRowLabels(toObjects(parseCSV(txt.incWork)), INCREASE_ROW_LABELS);
     incOff    = applyRowLabels(toObjects(parseCSV(txt.incOff)), INCREASE_ROW_LABELS);
   } catch(e){ showError('CSV 파싱 중 오류: ' + e.message); return; }
@@ -419,6 +472,9 @@ async function main(){
 
   /* 공간구분별 일평균 가동시간 막대 */
   mkOperBar('c-oper-bar', 'lg-oper-space', operSpace);
+
+  /* 공용공간 자동 꺼짐 예약 전후 혼합차트 */
+  mkReserveChart('c-oper-reserve', 'lg-oper-reserve', operReserve);
 
   /* 증감 표 */
   fillIncreaseTable('incWorkB', incWork);
