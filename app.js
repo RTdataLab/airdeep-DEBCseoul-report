@@ -6,7 +6,7 @@
    새로고침 시 리포트가 자동 갱신됩니다. (파일명이 바뀌면 설정표만 수정)
    ============================================================ */
 
-const DAYS = Array.from({length:30},(_,i)=>i+1);          // 4월 = 30일
+const DAYS = Array.from({length:30},(_,i)=>i+1);          // 6월 = 30일
 const LC   = ['#2D6BFF','#E5484D','#22C55E','#F59E0B','#7C3AED','#0F766E','#BE185D','#0EA5E9','#78716C','#DB2777'];
 const TT   = {backgroundColor:'#0B1220',titleColor:'#fff',bodyColor:'#E5E9F0',padding:10,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10,boxPadding:3};
 const OUTDOOR_KEY = '최고기온(℃)';
@@ -27,7 +27,7 @@ const DATA_FILES = {
 
 /* ✏️ 공휴일 날짜 — 주말(토·일)은 자동 계산되고, 여기엔 공휴일만 적으면 됩니다.
    해당 날짜의 x축 라벨이 빨간색으로 표시됩니다. (매달 이 줄만 갱신) */
-const PUBLIC_HOLIDAYS = []; // 2026년 4월 평일 공휴일 없음
+const PUBLIC_HOLIDAYS = ['2026-06-03']; // 2026년 6월 평일 공휴일: 전국동시지방선거일
 
 function isHolidayDate(s){
   const m = String(s ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -121,6 +121,12 @@ function pick(row, keys, index, fallback=''){
   }
   return fallback;
 }
+function pickKey(row, keys, fallback=''){
+  for(const key of keys){
+    if(row[key] !== undefined && row[key] !== '') return row[key];
+  }
+  return fallback;
+}
 function applyRowLabels(rows, labels){
   rows.forEach((row, i) => row.__displayZone = labels[i] || row.__displayZone);
   return rows;
@@ -144,8 +150,8 @@ const SERIES_LABELS = {
   tempZone: ['실외 최고기온','서울 1층','서울 2층','서울 3층','서울 6층','서울 7층','서울 별관'],
   ctrlLow: ['1층 로비','1층 안내센터','2층 로비','2층 회의실','3층 회의실','별관 로비','실외 최고기온'],
   ctrl6: ['6층 노조사무실','6층 본부장실','6층 사무실1','6층 사무실2','6층 사무실3','6층 이사장실','실외 최고기온'],
-  ctrl7: ['7층 본부장실1','7층 본부장실2','7층 사무실1','7층 사무실2','7층 사무실3','7층 회의실','실외 최고기온'],
-  operZone: ['서울 1층','서울 2층','서울 3층','서울 6층','서울 7층','서울 별관'],
+  ctrl7: ['7층 본부장실1','7층 본부장실2','7층 사무실1','7층 사무실3','7층 회의실','실외 최고기온'],
+  operZone: ['서울 B1층','서울 1층','서울 2층','서울 3층','서울 6층','서울 7층','서울 별관'],
   operSpace: ['공용공간','사무실']
 };
 
@@ -303,35 +309,37 @@ function mkOperBar(canvasId, legendId, series){
 function fillIncreaseTable(tbodyId, rows){
   const tb = document.getElementById(tbodyId);
   if(!tb) return;
-  const hasCompare = rows.some(r => {
-    const cur = pick(r, ['총가동시간_시간_5월', '총가동시간_시간_6월', '당월'], 6);
-    const diff = pick(r, ['총가동시간_증감'], 8);
-    return cur !== '' || diff !== '';
-  });
+  const hasCompare = rows.some(r => pickKey(r, ['총가동시간_시간_6월', '총가동시간_증감']) !== '');
   const table = tb.closest('table');
-  if(table && !hasCompare){
+  if(table && hasCompare){
+    const cg = table.querySelector('colgroup');
+    if(cg) cg.innerHTML = '<col class="inc-col-zone"><col class="inc-col-count"><col class="inc-col-num"><col class="inc-col-num"><col class="inc-col-count"><col class="inc-col-num"><col class="inc-col-num"><col class="inc-col-num"><col class="inc-col-num">';
+    const head = table.querySelector('thead tr');
+    if(head) head.innerHTML = '<th>구역</th><th>5월 장치수</th><th>5월 총 가동시간</th><th>5월 장비당 일평균</th><th>6월 장치수</th><th>6월 총 가동시간</th><th>6월 장비당 일평균</th><th>총 가동시간 증감</th><th>장비당 일평균 증감</th>';
+  } else if(table && !hasCompare){
     const cg = table.querySelector('colgroup');
     if(cg) cg.innerHTML = '<col class="inc-col-zone"><col class="inc-col-count"><col class="inc-col-num"><col class="inc-col-num">';
     const head = table.querySelector('thead tr');
-    if(head) head.innerHTML = '<th>구역</th><th>제어기 수</th><th>4월 총 가동시간</th><th>장비당 일평균</th>';
+    if(head) head.innerHTML = '<th>구역</th><th>제어기 수</th><th>당월 총 가동시간</th><th>장비당 일평균</th>';
   }
   const data = rows.map(r=>{
     const rawZone = fmtZoneName(pick(r, ['HUB_NICKNAME', '지역'], 2));
-    const zone = hasCompare ? (r.__displayZone || rawZone) : rawZone;
+    const zone = rawZone;
     if(!hasCompare){
       const deviceCount = num(pick(r, ['제어기_장치수'], 3)) ?? 0;
       const cur = num(pick(r, ['총가동시간_시간_4월', '총가동시간_시간'], 4)) ?? 0;
       const curAvg = num(pick(r, ['장비당_일평균가동시간_시간_4월', '장비당_일평균가동시간_시간'], 5)) ?? 0;
       return { zone, deviceCount, cur, curAvg };
     }
-    const prev = num(pick(r, ['총가동시간_시간_4월', '총가동시간_시간_5월', '전월'], 4)) ?? 0;
-    const prevAvg = num(pick(r, ['장비당_일평균가동시간_시간_4월', '장비당_일평균가동시간_시간_5월'], 5)) ?? 0;
-    const cur  = num(pick(r, ['총가동시간_시간_5월', '총가동시간_시간_6월', '당월'], 6)) ?? 0;
-    const curAvg = num(pick(r, ['장비당_일평균가동시간_시간_5월', '장비당_일평균가동시간_시간_6월'], 7)) ?? 0;
-    const deviceCount = num(pick(r, ['제어기_장치수'], 3)) ?? 0;
-    const totalDiff = num(pick(r, ['총가동시간_증감'], 8)) ?? +(cur - prev).toFixed(2);
-    const avgDiff = num(pick(r, ['장비당_일평균가동시간_증감'], 9)) ?? +(curAvg - prevAvg).toFixed(2);
-    return { zone, deviceCount, prev, prevAvg, cur, curAvg, totalDiff, avgDiff };
+    const prev = num(pickKey(r, ['총가동시간_시간_5월', '총가동시간_시간_4월', '전월'], pick(r, [], 4))) ?? 0;
+    const prevAvg = num(pickKey(r, ['장비당_일평균가동시간_시간_5월', '장비당_일평균가동시간_시간_4월'], pick(r, [], 5))) ?? 0;
+    const cur  = num(pickKey(r, ['총가동시간_시간_6월', '총가동시간_시간_5월', '당월'], pick(r, [], 6))) ?? 0;
+    const curAvg = num(pickKey(r, ['장비당_일평균가동시간_시간_6월', '장비당_일평균가동시간_시간_5월'], pick(r, [], 7))) ?? 0;
+    const prevDeviceCount = num(pickKey(r, ['장치수_5월', '제어기_장치수'], pick(r, [], 3))) ?? 0;
+    const deviceCount = num(pickKey(r, ['장치수_6월', '제어기_장치수'], pick(r, [], 6))) ?? 0;
+    const totalDiff = num(pickKey(r, ['총가동시간_증감'], pick(r, [], 8))) ?? +(cur - prev).toFixed(2);
+    const avgDiff = num(pickKey(r, ['장비당_일평균가동시간_증감'], pick(r, [], 9))) ?? +(curAvg - prevAvg).toFixed(2);
+    return { zone, prevDeviceCount, deviceCount, prev, prevAvg, cur, curAvg, totalDiff, avgDiff };
   }).sort((a,b)=>hasCompare ? b.avgDiff-a.avgDiff : b.curAvg-a.curAvg);
   tb.innerHTML = data.map(r=>{
     if(!hasCompare){
@@ -346,9 +354,10 @@ function fillIncreaseTable(tbodyId, rows){
     const avgDiffTxt = `<span class="${r.avgDiff>0?'risk':'ok-txt'}">${fmtHours(r.avgDiff, true)}</span>`;
     return `<tr>
       <td class="inc-zone"><strong>${r.zone}</strong></td>
-      <td class="num inc-num">${r.deviceCount}</td>
+      <td class="num inc-num">${r.prevDeviceCount}</td>
       <td class="num inc-num">${fmtHours(r.prev)}</td>
       <td class="num inc-num">${fmtHours(r.prevAvg)}</td>
+      <td class="num inc-num">${r.deviceCount}</td>
       <td class="num inc-num">${fmtHours(r.cur)}</td>
       <td class="num inc-num">${fmtHours(r.curAvg)}</td>
       <td class="num inc-num">${totalDiffTxt}</td>
