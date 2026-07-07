@@ -328,7 +328,7 @@ function mkReserveChart(canvasId, legendId, rows){
       {type:'line', label:LBL_RATE, data:rate, yAxisID:'y2',
        borderColor:'#E5484D', backgroundColor:'#E5484D',
        borderWidth:2, tension:0, fill:false,
-       pointRadius:4, pointHoverRadius:5, pointStyle:'circle'}
+       pointRadius:4, pointHoverRadius:5, pointStyle:'circle', clip:false}
     ]},
     options:{
       responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
@@ -339,9 +339,9 @@ function mkReserveChart(canvasId, legendId, rows){
       }}},
       scales:{
         x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:10.5}}},
-        y:{position:'left', beginAtZero:true,
+        y:{position:'left', min:0, max:3,
            title:{display:true,text:'일평균 가동시간(시간)',font:{size:10}},
-           ticks:{callback:v=>`${v}h`,font:{size:9.5}}, grid:{color:'#EEF1F6'}},
+           ticks:{stepSize:0.5, callback:v=>`${v}h`,font:{size:9.5}}, grid:{color:'#EEF1F6'}},
         y2:{position:'right', beginAtZero:true, max:100,
            title:{display:true,text:'감소율(%)',font:{size:10}},
            ticks:{callback:v=>`${v}%`,font:{size:9.5}}, grid:{drawOnChartArea:false}}
