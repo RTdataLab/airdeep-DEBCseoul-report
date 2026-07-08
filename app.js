@@ -306,7 +306,7 @@ function mkOperBar(canvasId, legendId, series){
   }
 }
 
-/* ── 예약 전후 비교 혼합차트 (막대=가동시간 · 선=감소율) ───── */
+/* ── 예약 전후 비교 혼합차트 (막대=가동시간 · 연결선=감소율) ───── */
 function mkReserveChart(canvasId, legendId, rows){
   const el = document.getElementById(canvasId);
   if(!el) return;
@@ -316,7 +316,44 @@ function mkReserveChart(canvasId, legendId, rows){
   const rate   = rows.map(r => num(r['감소율(%)']));
   const LBL_BEFORE = '예약 전 일평균 가동시간(6/1~6/15)';
   const LBL_AFTER  = '예약 후 일평균 가동시간(6/16~6/30)';
-  const LBL_RATE   = '감소율(%)';
+  const reserveConnector = {
+    id:`reserveConnector-${canvasId}`,
+    afterDatasetsDraw(chart){
+      const {ctx, chartArea} = chart;
+      const beforeMeta = chart.getDatasetMeta(0);
+      const afterMeta = chart.getDatasetMeta(1);
+      ctx.save();
+      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = '#E5484D';
+      ctx.fillStyle = '#E5484D';
+      ctx.font = '700 10.5px Pretendard, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      beforeMeta.data.forEach((beforeBar, i)=>{
+        const afterBar = afterMeta.data[i];
+        if(!beforeBar || !afterBar || !Number.isFinite(rate[i])) return;
+        const x1 = beforeBar.x;
+        const y1 = beforeBar.y;
+        const x2 = afterBar.x;
+        const y2 = afterBar.y;
+        const needsLabelNudge = ['2층 회의실', '6층 노조사무실'].includes(labels[i]);
+        const labelX = (x1 + x2) / 2 + (needsLabelNudge ? 10 : 0);
+        const labelOffset = needsLabelNudge ? 24 : 16;
+        const labelY = Math.max(chartArea.top + 10, (y1 + y2) / 2 - labelOffset);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        [ [x1,y1], [x2,y2] ].forEach(([x,y])=>{
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.fillText(`${rate[i].toFixed(1)}%`, labelX, labelY);
+      });
+      ctx.restore();
+    }
+  };
   new Chart(el,{
     data:{labels, datasets:[
       {type:'bar', label:LBL_BEFORE, data:before, yAxisID:'y',
@@ -324,27 +361,23 @@ function mkReserveChart(canvasId, legendId, rows){
        borderWidth:1, borderRadius:4, maxBarThickness:44},
       {type:'bar', label:LBL_AFTER, data:after, yAxisID:'y',
        backgroundColor:'rgba(34,197,94,.72)', borderColor:'#22C55E',
-       borderWidth:1, borderRadius:4, maxBarThickness:44},
-      {type:'line', label:LBL_RATE, data:rate, yAxisID:'y2',
-       borderColor:'#E5484D', backgroundColor:'#E5484D',
-       borderWidth:2, tension:0, fill:false,
-       pointRadius:4, pointHoverRadius:5, pointStyle:'circle', clip:false}
+       borderWidth:1, borderRadius:4, maxBarThickness:44}
     ]},
+    plugins:[reserveConnector],
     options:{
       responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
-        label:c => c.dataset.yAxisID === 'y2'
-          ? ` ${c.dataset.label}: ${c.parsed.y}%`
-          : ` ${c.dataset.label}: ${c.parsed.y}h`
+        label:c => ` ${c.dataset.label}: ${c.parsed.y}h`,
+        afterBody:items => {
+          const i = items?.[0]?.dataIndex;
+          return Number.isFinite(rate[i]) ? `감소율: ${rate[i].toFixed(1)}%` : '';
+        }
       }}},
       scales:{
         x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:10.5}}},
         y:{position:'left', min:0, max:3,
            title:{display:true,text:'일평균 가동시간(시간)',font:{size:10}},
-           ticks:{stepSize:0.5, callback:v=>`${v}h`,font:{size:9.5}}, grid:{color:'#EEF1F6'}},
-        y2:{position:'right', beginAtZero:true, max:100,
-           title:{display:true,text:'감소율(%)',font:{size:10}},
-           ticks:{callback:v=>`${v}%`,font:{size:9.5}}, grid:{drawOnChartArea:false}}
+           ticks:{stepSize:0.5, callback:v=>`${v}`,font:{size:9.5}}, grid:{color:'#EEF1F6'}}
       }
     }
   });
@@ -353,7 +386,7 @@ function mkReserveChart(canvasId, legendId, rows){
     if(lg) lg.innerHTML =
       `<span><i style="background:#2D6BFF;height:8px"></i>${LBL_BEFORE}</span>`+
       `<span><i style="background:#22C55E;height:8px"></i>${LBL_AFTER}</span>`+
-      `<span><i style="background:#E5484D;height:2px;width:18px;border-radius:0"></i>${LBL_RATE} · 보조축</span>`;
+      `<span><i style="background:#E5484D;height:2px;width:18px;border-radius:0"></i>감소율 연결선</span>`;
   }
 }
 
