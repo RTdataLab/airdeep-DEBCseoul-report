@@ -952,7 +952,7 @@ section {
    ══════════════════════════════════════════════════════════════ */
 .risk     { font-weight: 800; color: var(--alert); }
 .warn-txt { font-weight: 800; color: var(--warn); }
-.ok-txt   { font-weight: 800; color: var(--ok); }
+.ok-txt   { font-weight: 800; color: var(--brand); }
 .delta-up { font-weight: 700; color: var(--alert); }
 .delta-dn { font-weight: 700; color: var(--ok); }
 
