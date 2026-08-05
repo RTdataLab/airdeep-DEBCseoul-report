@@ -22,8 +22,9 @@ const DATA_FILES = {
   operZone:  '4-1.csv',    // 섹션4-1 — 구역별 일평균 가동시간
   operSpace: '4-2.csv',    // 섹션4-2 — 공간구분별 일평균 가동시간
   operReserve:'4-3.csv',   // 섹션4-3 — 공용공간 자동 꺼짐 예약 전후 비교
-  incWork:   '4-4.csv',    // 섹션4-4 — 사용량/전월대비(근무시간)
-  incOff:    '4-5.csv'     // 섹션4-5 — 사용량/전월대비(근무외)
+  night1F:   '4-4-night.csv', // 섹션4-4 — 1층 야간 자동 꺼짐 예약 전후 비교
+  incWork:   '4-4.csv',    // 섹션4-5 — 사용량/전월대비(근무시간)
+  incOff:    '4-5.csv'     // 섹션4-6 — 사용량/전월대비(근무외)
 };
 
 /* ✏️ 공휴일 날짜 — 주말(토·일)은 자동 계산되고, 여기엔 공휴일만 적으면 됩니다.
@@ -154,6 +155,20 @@ function fmtZoneName(v){
     .replace(/(\d)층/g, '$1층')
     .replace(/\s+/g, ' ')
     .trim();
+}
+function cssColor(name, fallback){
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+function withAlpha(color, alpha){
+  const hex = String(color || '').trim();
+  if(/^#[0-9A-Fa-f]{6}$/.test(hex)){
+    const r = parseInt(hex.slice(1,3), 16);
+    const g = parseInt(hex.slice(3,5), 16);
+    const b = parseInt(hex.slice(5,7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  return color;
 }
 
 const SERIES_LABELS = {
@@ -420,6 +435,187 @@ function mkReserveChart(canvasId, legendId, rows){
   }
 }
 
+/* ── 1층 야간 자동 꺼짐 예약 전후 비교 ───────────────────── */
+function nightCategoryLabel(v){
+  const s = String(v || '').trim()
+    .replace('22~06시 전체', '22시~06시 전체')
+    .replace('22~00시', '22시~00시')
+    .replace('00~02시', '00시~02시')
+    .replace('02~04시', '02시~04시')
+    .replace('04~06시', '04시~06시');
+  return s.includes('전체') ? ['22시~06시', '전체'] : s;
+}
+function nightChange(raw, before, after){
+  const text = String(raw || '');
+  const found = text.match(/-?\d+(?:\.\d+)?/);
+  const rate = found ? Math.abs(Number(found[0])) : Math.abs(((after - before) / before) * 100);
+  const up = text.includes('▲') || (!text.includes('▼') && after > before);
+  return { up, text:`${up ? '▲' : '▼'} ${rate.toFixed(2)}%` };
+}
+function mkNightOffPanel(canvasId, rows, spaceName, yMax){
+  const el = document.getElementById(canvasId);
+  if(!el) return;
+  const sorted = rows
+    .filter(r => String(r['공간'] || '').trim() === spaceName)
+    .sort((a,b)=>(num(a['구간정렬']) ?? 0) - (num(b['구간정렬']) ?? 0));
+  const labels = sorted.map(r => nightCategoryLabel(r['분석 구간']));
+  const june = sorted.map(r => num(r['6월 평균 가동시간']) ?? 0);
+  const july = sorted.map(r => num(r['7월 평균 가동시간']) ?? 0);
+  const changes = sorted.map((r,i)=>nightChange(r['그래프 표시 문구'], june[i], july[i]));
+  const brand = cssColor('--brand', LC[0]);
+  const warn = cssColor('--warn', LC[3]);
+  const alert = cssColor('--alert', LC[1]);
+  const line = cssColor('--line', '#E5E9F0');
+  const ink = cssColor('--ink', '#0B1220');
+  const muted = cssColor('--muted', '#5B6577');
+  const nightLabelPlugin = {
+    id:`nightLabel-${canvasId}`,
+    afterDatasetsDraw(chart){
+      const {ctx, chartArea} = chart;
+      const m0 = chart.getDatasetMeta(0);
+      const m1 = chart.getDatasetMeta(1);
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      sorted.forEach((_, i)=>{
+        const b0 = m0.data[i], b1 = m1.data[i];
+        if(!b0 || !b1) return;
+        [[b0, june[i]], [b1, july[i]]].forEach(([bar, value])=>{
+          ctx.fillStyle = ink;
+          ctx.font = '700 9.5px Pretendard, system-ui, sans-serif';
+          ctx.fillText(value.toFixed(2), bar.x, Math.max(chartArea.top + 8, bar.y - 8));
+        });
+        const change = changes[i];
+        const labelY = Math.max(chartArea.top + 10, Math.min(b0.y, b1.y) - 26);
+        ctx.fillStyle = change.up ? alert : brand;
+        ctx.font = '800 10px Pretendard, system-ui, sans-serif';
+        ctx.fillText(change.text, (b0.x + b1.x) / 2, labelY);
+      });
+      ctx.restore();
+    }
+  };
+  new Chart(el,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'6월 평균 가동시간', data:june,
+       backgroundColor:withAlpha(brand, .72), borderColor:brand,
+       borderWidth:1, borderRadius:4, maxBarThickness:34},
+      {label:'7월 평균 가동시간', data:july,
+       backgroundColor:withAlpha(warn, .76), borderColor:warn,
+       borderWidth:1, borderRadius:4, maxBarThickness:34}
+    ]},
+    plugins:[nightLabelPlugin],
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:26}},
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+        title:items=>Array.isArray(items[0].label) ? items[0].label.join(' ') : items[0].label,
+        label:c=>` ${c.dataset.label}: ${c.parsed.y.toFixed(2)}h`,
+        afterBody:items=>{
+          const i = items?.[0]?.dataIndex;
+          return changes[i]?.text || '';
+        }
+      }}},
+      scales:{
+        x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:9.5},color:muted}},
+        y:{min:0,max:yMax,
+          title:{display:true,text:'평균 가동시간(시간)',font:{size:10}},
+          ticks:{stepSize:yMax <= 2.5 ? .5 : 1, callback:v=>`${v}`,font:{size:9.5},color:muted},
+          grid:{color:line}}
+      }
+    }
+  });
+}
+function mkNightOffSingleChart(canvasId, legendId, rows){
+  const el = document.getElementById(canvasId);
+  if(!el) return;
+  const order = ['1층 안내센터', '1층 로비'];
+  const wholeRows = order
+    .map(space => rows.find(r =>
+      String(r['공간'] || '').trim() === space &&
+      (String(r['분석 구간'] || '').includes('22~06') || String(r['분석 구간'] || '').includes('22시~06시'))
+    ))
+    .filter(Boolean);
+  const labels = wholeRows.map(r => r['공간']);
+  const june = wholeRows.map(r => num(r['6월 평균 가동시간']) ?? 0);
+  const july = wholeRows.map(r => num(r['7월 평균 가동시간']) ?? 0);
+  const changes = wholeRows.map((r,i)=>nightChange(r['그래프 표시 문구'], june[i], july[i]));
+  const brand = cssColor('--brand', LC[0]);
+  const warn = cssColor('--warn', LC[3]);
+  const alert = cssColor('--alert', LC[1]);
+  const line = cssColor('--line', '#E5E9F0');
+  const ink = cssColor('--ink', '#0B1220');
+  const muted = cssColor('--muted', '#5B6577');
+  const lg = document.getElementById(legendId);
+  if(lg) lg.innerHTML =
+    `<span><i style="background:var(--brand);height:8px"></i>6월 평균 가동시간</span>`+
+    `<span><i style="background:var(--warn);height:8px"></i>7월 평균 가동시간</span>`+
+    `<span style="color:${brand};font-weight:800">▼ 감소율</span>`+
+    `<span style="color:${alert};font-weight:800">▲ 증가율</span>`;
+  const nightLabelPlugin = {
+    id:`nightSingleLabel-${canvasId}`,
+    afterDatasetsDraw(chart){
+      const {ctx, chartArea} = chart;
+      const m0 = chart.getDatasetMeta(0);
+      const m1 = chart.getDatasetMeta(1);
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      wholeRows.forEach((_, i)=>{
+        const b0 = m0.data[i], b1 = m1.data[i];
+        if(!b0 || !b1) return;
+        [[b0, june[i]], [b1, july[i]]].forEach(([bar, value])=>{
+          ctx.fillStyle = ink;
+          ctx.font = '700 9.5px Pretendard, system-ui, sans-serif';
+          ctx.fillText(value.toFixed(2), bar.x, Math.max(chartArea.top + 8, bar.y - 8));
+        });
+        const change = changes[i];
+        const labelY = Math.max(chartArea.top + 12, Math.min(b0.y, b1.y) - 30);
+        ctx.fillStyle = change.up ? alert : brand;
+        ctx.font = '800 11px Pretendard, system-ui, sans-serif';
+        ctx.fillText(change.text, (b0.x + b1.x) / 2, labelY);
+      });
+      ctx.restore();
+    }
+  };
+  new Chart(el,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'6월 평균 가동시간', data:june,
+       backgroundColor:withAlpha(brand, .72), borderColor:brand,
+       borderWidth:1, borderRadius:4, maxBarThickness:46},
+      {label:'7월 평균 가동시간', data:july,
+       backgroundColor:withAlpha(warn, .76), borderColor:warn,
+       borderWidth:1, borderRadius:4, maxBarThickness:46}
+    ]},
+    plugins:[nightLabelPlugin],
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:30}},
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+        title:items=>items[0].label,
+        label:c=>` ${c.dataset.label}: ${c.parsed.y.toFixed(2)}h`,
+        afterBody:items=>{
+          const i = items?.[0]?.dataIndex;
+          return changes[i]?.text || '';
+        }
+      }}},
+      scales:{
+        x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:11},color:muted}},
+        y:{min:0,max:5,
+          title:{display:true,text:'평균 가동시간(시간)',font:{size:10}},
+          ticks:{stepSize:1, callback:v=>`${v}`,font:{size:9.5},color:muted},
+          grid:{color:line}}
+      }
+    }
+  });
+}
+function mkNightOffCharts(legendId, rows){
+  mkNightOffSingleChart('c-night-1f', legendId, rows);
+}
+
 /* ── 증감 표 자동 생성 ─────────────────────────────────────── */
 function fillIncreaseTable(tbodyId, rows){
   const tb = document.getElementById(tbodyId);
@@ -493,7 +689,7 @@ async function main(){
   Chart.defaults.font.size = 11;
   Chart.defaults.color = '#5B6577';
 
-  const keys = ['tempZone','ctrlLow','ctrl6','ctrl7','operZone','operSpace','operReserve','incWork','incOff'];
+  const keys = ['tempZone','ctrlLow','ctrl6','ctrl7','operZone','operSpace','operReserve','night1F','incWork','incOff'];
   let txt = {};
   try {
     const res = await Promise.all(keys.map(k=>fetch(dataUrl(DATA_FILES[k]))));
@@ -502,7 +698,7 @@ async function main(){
     keys.forEach((k,i)=> txt[k] = texts[i]);
   } catch(e){ showError(e.message); return; }
 
-  let tempZone, ctrlLow, ctrl6, ctrl7, operZone, operSpace, operReserve, incWork, incOff;
+  let tempZone, ctrlLow, ctrl6, ctrl7, operZone, operSpace, operReserve, night1F, incWork, incOff;
   try {
     const tempRows = parseCSV(txt.tempZone);
     // 주말·공휴일 자동 계산 (날짜 열 기준) → x축 라벨 빨강 처리
@@ -518,6 +714,7 @@ async function main(){
     operZone  = toSeriesMap(parseCSV(txt.operZone), SERIES_LABELS.operZone);
     operSpace = toSeriesMap(parseCSV(txt.operSpace), SERIES_LABELS.operSpace);
     operReserve = toObjects(parseCSV(txt.operReserve));
+    night1F  = toObjects(parseCSV(txt.night1F));
     incWork   = applyRowLabels(toObjects(parseCSV(txt.incWork)), INCREASE_ROW_LABELS);
     incOff    = applyRowLabels(toObjects(parseCSV(txt.incOff)), INCREASE_ROW_LABELS);
   } catch(e){ showError('CSV 파싱 중 오류: ' + e.message); return; }
@@ -536,6 +733,9 @@ async function main(){
 
   /* 공용공간 자동 꺼짐 예약 전후 혼합차트 */
   mkReserveChart('c-oper-reserve', 'lg-oper-reserve', operReserve);
+
+  /* 1층 야간 자동 꺼짐 예약 전후 비교 */
+  mkNightOffCharts('lg-night-1f', night1F);
 
   /* 증감 표 */
   fillIncreaseTable('incWorkB', incWork);

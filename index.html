@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" as="style" crossorigin
   href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="style.css?v=20260804b">
+<link rel="stylesheet" href="style.css?v=20260805c">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 /* 표 헤더 디자인 통일 (전국 리포트와 동일) */
@@ -213,6 +213,17 @@
     </div>
   </div>
 
+  <!-- 1층 야간 자동 꺼짐 예약 전후 비교 -->
+  <div class="chart-card" id="night-1f-analysis">
+    <div class="chart-card-title">본사 1층 야간(22시-06시) 냉방 자동 꺼짐 예약 전후 가동시간 비교</div>
+    <div class="chart-card-note">평일 기준 · 단위: 시간</div>
+    <div class="legend-row" id="lg-night-1f"></div>
+    <div class="cw h260"><canvas id="c-night-1f"></canvas></div>
+    <div class="cmnt"><div class="cmnt-bar" style="background:#2D6BFF"></div>
+      <div class="cmnt-text">서울 본사 1층 로비와 안내센터에는 7월 1일부터 22시~06시 사이에 22시, 00시, 02시, 04시마다 냉방 OFF 신호를 전송하고 있습니다. 6월과 7월의 야간 평균 가동시간을 비교한 결과, 1층 안내센터는 22시~06시 전체 평균 가동시간이 1.57시간에서 0.82시간으로 감소했으며, 특히 00시 이후 시간대에서 감소 폭이 크게 나타났습니다. 1층 로비는 22시~06시 전체 평균 가동시간은 6월 4.11시간, 7월 4.08시간으로 유사한 수준을 보였습니다. 다만 본 가동시간은 진동센서 측정값을 기반으로 산출한 추정치이므로, 예약 OFF 이후에도 잔류 진동, 냉방기 재가동 및 센서 감지 조건 등에 따라 일부 가동시간이 포함될 수 있습니다. 따라서 공간별 운영 상황과 진동센서의 감지 특성을 함께 고려하여 결과를 해석할 필요가 있습니다.</div>
+    </div>
+  </div>
+
   <!-- 전월 대비 증가: 근무시간 -->
   <div class="chart-card">
     <div class="chart-card-title">전월 대비 냉난방기 사용량 증가 구역 (평일 근무시간(08-19) 기준)</div>
@@ -249,6 +260,6 @@
 </div>
 
 
-<script src="app.js?v=20260804b"></script>
+<script src="app.js?v=20260805c"></script>
 </body>
 </html>
