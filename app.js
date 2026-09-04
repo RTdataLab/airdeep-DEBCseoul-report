@@ -6,7 +6,7 @@
    새로고침 시 리포트가 자동 갱신됩니다. (파일명이 바뀌면 설정표만 수정)
    ============================================================ */
 
-const DAYS = Array.from({length:31},(_,i)=>i+1);          // 7월 = 31일
+const DAYS = Array.from({length:31},(_,i)=>i+1);          // 8월 = 31일
 const LC   = ['#2D6BFF','#E5484D','#22C55E','#F59E0B','#7C3AED','#0F766E','#BE185D','#0EA5E9','#78716C','#DB2777'];
 const TT   = {backgroundColor:'#0B1220',titleColor:'#fff',bodyColor:'#E5E9F0',padding:10,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10,boxPadding:3};
 const OUTDOOR_KEY = '최고기온(℃)';
@@ -29,7 +29,7 @@ const DATA_FILES = {
 
 /* ✏️ 공휴일 날짜 — 주말(토·일)은 자동 계산되고, 여기엔 공휴일만 적으면 됩니다.
    해당 날짜의 x축 라벨이 빨간색으로 표시됩니다. (매달 이 줄만 갱신) */
-const PUBLIC_HOLIDAYS = ['2026-07-17']; // 2026년 7월 평일 공휴일: 제헌절
+const PUBLIC_HOLIDAYS = ['2026-08-17']; // 2026년 8월 평일 공휴일: 광복절 대체공휴일
 
 function isHolidayDate(s){
   const m = String(s ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -152,6 +152,7 @@ function fmtZoneName(v){
     .replace(/^본사_/, '')
     .replace(/_/g, ' ')
     .replace(/서울(?=\d)/g, '서울 ')
+    .replace(/서울(?=별관)/g, '서울 ')
     .replace(/(\d)층/g, '$1층')
     .replace(/\s+/g, ' ')
     .trim();
@@ -338,12 +339,15 @@ function mkReserveChart(canvasId, legendId, rows){
   const before = rows.map(r => num(pickKey(r, ['예약 전 일평균 가동시간'])));
   const after  = rows.map(r => num(pickKey(r, ['예약 직후 일평균 가동시간', '예약 후 일평균 가동시간'])));
   const july   = rows.map(r => num(pickKey(r, ['7월 일평균 가동시간', '당월 일평균 가동시간'])));
+  const aug    = rows.map(r => num(pickKey(r, ['8월 일평균 가동시간', '당월 일평균 가동시간'])));
   const calcRate = (from, to) => Number.isFinite(from) && from !== 0 && Number.isFinite(to) ? +(((from - to) / from) * 100).toFixed(2) : null;
   const rateAfter = rows.map((r, i) => num(pickKey(r, ['예약 전 대비 예약 직후 감소율(%)', '예약 전 대비 예약 후 감소율(%)', '감소율(%)'])) ?? calcRate(before[i], after[i]));
   const rateJuly  = rows.map((r, i) => num(pickKey(r, ['예약 전 대비 7월 감소율(%)'])) ?? calcRate(before[i], july[i]));
+  const rateAug   = rows.map((r, i) => num(pickKey(r, ['예약 전 대비 8월 감소율(%)'])) ?? calcRate(before[i], aug[i]));
   const LBL_BEFORE = '예약 전 일평균 가동시간(6/1~6/15)';
   const LBL_AFTER  = '예약 직후 일평균 가동시간(6/16~6/30)';
   const LBL_JULY   = '7월 일평균 가동시간(7/1~7/31)';
+  const LBL_AUG    = '8월 일평균 가동시간(8/1~8/31)';
   const reserveConnector = {
     id:`reserveConnector-${canvasId}`,
     afterDatasetsDraw(chart){
@@ -351,6 +355,7 @@ function mkReserveChart(canvasId, legendId, rows){
       const beforeMeta = chart.getDatasetMeta(0);
       const afterMeta = chart.getDatasetMeta(1);
       const julyMeta = chart.getDatasetMeta(2);
+      const augMeta = chart.getDatasetMeta(3);
       ctx.save();
       ctx.lineWidth = 1.25;
       ctx.font = '700 8.5px Pretendard, system-ui, sans-serif';
@@ -387,7 +392,8 @@ function mkReserveChart(canvasId, legendId, rows){
         });
       };
       draw(afterMeta, rateAfter, '#E5484D', [], 14, -16);
-      draw(julyMeta, rateJuly, '#B91C1C', [3, 3], 15, 16);
+      draw(julyMeta, rateJuly, '#B91C1C', [3, 3], 15, 6);
+      draw(augMeta, rateAug, '#7C3AED', [2, 3], 16, 26);
       ctx.restore();
     }
   };
@@ -401,6 +407,9 @@ function mkReserveChart(canvasId, legendId, rows){
        borderWidth:1, borderRadius:4, maxBarThickness:34},
       {type:'bar', label:LBL_JULY, data:july, yAxisID:'y',
        backgroundColor:'rgba(245,158,11,.72)', borderColor:'#F59E0B',
+       borderWidth:1, borderRadius:4, maxBarThickness:34},
+      {type:'bar', label:LBL_AUG, data:aug, yAxisID:'y',
+       backgroundColor:'rgba(124,58,237,.64)', borderColor:'#7C3AED',
        borderWidth:1, borderRadius:4, maxBarThickness:34}
     ]},
     plugins:[reserveConnector],
@@ -413,6 +422,7 @@ function mkReserveChart(canvasId, legendId, rows){
           const lines = [];
           if(Number.isFinite(rateAfter[i])) lines.push(`예약 직후 감소율: ${rateAfter[i].toFixed(1)}%`);
           if(Number.isFinite(rateJuly[i])) lines.push(`7월 감소율: ${rateJuly[i].toFixed(1)}%`);
+          if(Number.isFinite(rateAug[i])) lines.push(`8월 감소율: ${rateAug[i].toFixed(1)}%`);
           return lines;
         }
       }}},
@@ -430,8 +440,10 @@ function mkReserveChart(canvasId, legendId, rows){
       `<span><i style="background:#2D6BFF;height:8px"></i>${LBL_BEFORE}</span>`+
       `<span><i style="background:#22C55E;height:8px"></i>${LBL_AFTER}</span>`+
       `<span><i style="background:#F59E0B;height:8px"></i>${LBL_JULY}</span>`+
+      `<span><i style="background:#7C3AED;height:8px"></i>${LBL_AUG}</span>`+
       `<span><i style="background:#E5484D;height:2px;width:18px;border-radius:0"></i>예약 직후 감소율 연결선</span>`+
-      `<span><i style="background:transparent;border-top:2px dashed #B91C1C;height:0;width:18px;border-radius:0"></i>7월 감소율 연결선</span>`;
+      `<span><i style="background:transparent;border-top:2px dashed #B91C1C;height:0;width:18px;border-radius:0"></i>7월 감소율 연결선</span>`+
+      `<span><i style="background:transparent;border-top:2px dashed #7C3AED;height:0;width:18px;border-radius:0"></i>8월 감소율 연결선</span>`;
   }
 }
 
@@ -530,19 +542,25 @@ function mkNightOffPanel(canvasId, rows, spaceName, yMax){
 function mkNightOffSingleChart(canvasId, legendId, rows){
   const el = document.getElementById(canvasId);
   if(!el) return;
-  const order = ['1층 안내센터', '1층 로비'];
-  const wholeRows = order
-    .map(space => rows.find(r =>
-      String(r['공간'] || '').trim() === space &&
-      (String(r['분석 구간'] || '').includes('22~06') || String(r['분석 구간'] || '').includes('22시~06시'))
-    ))
-    .filter(Boolean);
-  const labels = wholeRows.map(r => r['공간']);
-  const june = wholeRows.map(r => num(r['6월 평균 가동시간']) ?? 0);
-  const july = wholeRows.map(r => num(r['7월 평균 가동시간']) ?? 0);
-  const changes = wholeRows.map((r,i)=>nightChange(r['그래프 표시 문구'], june[i], july[i]));
+  const row = rows.find(r =>
+    String(r['공간'] || '').trim().includes('안내센터') &&
+    (String(r['분석 구간'] || '').includes('22~06') || String(r['분석 구간'] || '').includes('22시~06시'))
+  ) || rows.find(r => String(r['분석 구간'] || '').includes('22~06'));
+  if(!row) return;
+  const labels = ['6월', '7월', '8월'];
+  const values = [
+    num(row['6월 평균 가동시간']) ?? 0,
+    num(row['7월 평균 가동시간']) ?? 0,
+    num(row['8월 평균 가동시간']) ?? 0
+  ];
+  const changes = [
+    nightChange(row['6월 대비 7월 감소율(%)'], values[0], values[1]),
+    nightChange(pickKey(row, ['6월 대비 8월 감소율(%)']), values[0], values[2])
+  ];
+  const yMax = Math.max(1, Math.ceil(Math.max(...values, 0) * 1.28 * 2) / 2);
   const brand = cssColor('--brand', LC[0]);
   const warn = cssColor('--warn', LC[3]);
+  const good = cssColor('--good', LC[2]);
   const alert = cssColor('--alert', LC[1]);
   const line = cssColor('--line', '#E5E9F0');
   const ink = cssColor('--ink', '#0B1220');
@@ -551,30 +569,56 @@ function mkNightOffSingleChart(canvasId, legendId, rows){
   if(lg) lg.innerHTML =
     `<span><i style="background:var(--brand);height:8px"></i>6월 평균 가동시간</span>`+
     `<span><i style="background:var(--warn);height:8px"></i>7월 평균 가동시간</span>`+
-    `<span style="color:${brand};font-weight:800">▼ 감소율</span>`+
-    `<span style="color:${alert};font-weight:800">▲ 증가율</span>`;
+    `<span><i style="background:${good};height:8px"></i>8월 평균 가동시간</span>`+
+    `<span><i style="background:${alert};height:2px;width:18px;border-radius:0"></i>6월 대비 7월 감소율</span>`+
+    `<span><i style="background:transparent;border-top:2px dashed ${alert};height:0;width:18px;border-radius:0"></i>6월 대비 8월 감소율</span>`;
   const nightLabelPlugin = {
     id:`nightSingleLabel-${canvasId}`,
     afterDatasetsDraw(chart){
       const {ctx, chartArea} = chart;
       const m0 = chart.getDatasetMeta(0);
-      const m1 = chart.getDatasetMeta(1);
+      const bars = m0.data;
       ctx.save();
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      wholeRows.forEach((_, i)=>{
-        const b0 = m0.data[i], b1 = m1.data[i];
-        if(!b0 || !b1) return;
-        [[b0, june[i]], [b1, july[i]]].forEach(([bar, value])=>{
-          ctx.fillStyle = ink;
-          ctx.font = '700 9.5px Pretendard, system-ui, sans-serif';
-          ctx.fillText(value.toFixed(2), bar.x, Math.max(chartArea.top + 8, bar.y - 8));
-        });
-        const change = changes[i];
-        const labelY = Math.max(chartArea.top + 12, Math.min(b0.y, b1.y) - 30);
-        ctx.fillStyle = change.up ? alert : brand;
-        ctx.font = '800 11px Pretendard, system-ui, sans-serif';
-        ctx.fillText(change.text, (b0.x + b1.x) / 2, labelY);
+
+      const drawRate = (fromIdx, toIdx, change, dash, labelT, labelOffsetX, labelOffsetY, fromYOffset=0, toYOffset=0, alpha=1, fromXOffset=0, toXOffset=0)=>{
+        const b0 = bars[fromIdx], b1 = bars[toIdx];
+        if(!b0 || !b1 || !change) return;
+        const anchorY = (bar, offset) => {
+          if(offset === 'center') return bar.y + ((chartArea.bottom - bar.y) / 2);
+          return bar.y + offset;
+        };
+        const p0X = b0.x + fromXOffset;
+        const p1X = b1.x + toXOffset;
+        const p0Y = Math.min(chartArea.bottom - 3, anchorY(b0, fromYOffset));
+        const p1Y = Math.min(chartArea.bottom - 3, anchorY(b1, toYOffset));
+        ctx.save();
+        ctx.strokeStyle = alert;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = 1.15;
+        ctx.setLineDash(dash);
+        ctx.beginPath();
+        ctx.moveTo(p0X, p0Y);
+        ctx.lineTo(p1X, p1Y);
+        ctx.stroke();
+        ctx.restore();
+
+        const midX = p0X + ((p1X - p0X) * labelT) + labelOffsetX;
+        const midY = p0Y + ((p1Y - p0Y) * labelT) + labelOffsetY;
+        ctx.fillStyle = alert;
+        ctx.font = '800 10px Pretendard, system-ui, sans-serif';
+        ctx.fillText(change.text, midX, Math.max(chartArea.top + 12, midY));
+      };
+      const half = i => (bars[i]?.width || 46) / 2;
+      drawRate(0, 2, changes[1], [4, 3], .64, 24, -18, 0, 'center', .7, -half(0), 0);
+      drawRate(0, 1, changes[0], [], .55, 0, -20, 0, 0, 1, half(0), -half(1));
+
+      bars.forEach((bar, i)=>{
+        if(!bar) return;
+        ctx.fillStyle = ink;
+        ctx.font = '700 9.5px Pretendard, system-ui, sans-serif';
+        ctx.fillText(values[i].toFixed(2), bar.x, Math.max(chartArea.top + 8, bar.y - 8));
       });
       ctx.restore();
     }
@@ -582,31 +626,31 @@ function mkNightOffSingleChart(canvasId, legendId, rows){
   new Chart(el,{
     type:'bar',
     data:{labels,datasets:[
-      {label:'6월 평균 가동시간', data:june,
-       backgroundColor:withAlpha(brand, .72), borderColor:brand,
-       borderWidth:1, borderRadius:4, maxBarThickness:46},
-      {label:'7월 평균 가동시간', data:july,
-       backgroundColor:withAlpha(warn, .76), borderColor:warn,
+      {label:'평균 가동시간', data:values,
+       backgroundColor:[withAlpha(brand, .72), withAlpha(warn, .76), withAlpha(good, .72)],
+       borderColor:[brand, warn, good],
        borderWidth:1, borderRadius:4, maxBarThickness:46}
     ]},
     plugins:[nightLabelPlugin],
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:30}},
+      layout:{padding:{top:34}},
       interaction:{mode:'index',intersect:false},
       plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
         title:items=>items[0].label,
-        label:c=>` ${c.dataset.label}: ${c.parsed.y.toFixed(2)}h`,
+        label:c=>` 평균 가동시간: ${c.parsed.y.toFixed(2)}h`,
         afterBody:items=>{
-          const i = items?.[0]?.dataIndex;
-          return changes[i]?.text || '';
+          const idx = items?.[0]?.dataIndex;
+          if(idx === 1) return `6월 대비 7월 감소율: ${changes[0].text.replace('▼ ', '').replace('▲ ', '')}`;
+          if(idx === 2) return `6월 대비 8월 감소율: ${changes[1].text.replace('▼ ', '').replace('▲ ', '')}`;
+          return '';
         }
       }}},
       scales:{
         x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:11},color:muted}},
-        y:{min:0,max:5,
+        y:{min:0,max:yMax,
           title:{display:true,text:'평균 가동시간(시간)',font:{size:10}},
-          ticks:{stepSize:1, callback:v=>`${v}`,font:{size:9.5},color:muted},
+          ticks:{stepSize:.5, callback:v=>`${v}`,font:{size:9.5},color:muted},
           grid:{color:line}}
       }
     }
@@ -620,13 +664,26 @@ function mkNightOffCharts(legendId, rows){
 function fillIncreaseTable(tbodyId, rows){
   const tb = document.getElementById(tbodyId);
   if(!tb) return;
-  const hasCompare = rows.some(r => pickKey(r, ['총가동시간_시간_7월', '총가동시간_시간_6월', '총가동시간_증감']) !== '');
+  const header = rows[0]?.__header || [];
+  const monthKey = (prefix) => header
+    .filter(k => new RegExp(`^${prefix}_\\d+월$`).test(k))
+    .map(k => ({ key:k, month:num(k.match(/_(\d+)월$/)?.[1]) ?? 0 }))
+    .sort((a,b)=>a.month-b.month);
+  const totalMonths = monthKey('총가동시간_시간');
+  const avgMonths = monthKey('장비당_일평균가동시간_시간');
+  const prevTotalKey = totalMonths.at(-2)?.key;
+  const curTotalKey = totalMonths.at(-1)?.key;
+  const prevAvgKey = avgMonths.at(-2)?.key;
+  const curAvgKey = avgMonths.at(-1)?.key;
+  const prevMonth = totalMonths.at(-2)?.month;
+  const curMonth = totalMonths.at(-1)?.month;
+  const hasCompare = Boolean(prevTotalKey && curTotalKey) || rows.some(r => pickKey(r, ['총가동시간_증감']) !== '');
   const table = tb.closest('table');
   if(table && hasCompare){
     const cg = table.querySelector('colgroup');
     if(cg) cg.innerHTML = '<col class="inc-col-zone"><col class="inc-col-count"><col class="inc-col-num"><col class="inc-col-num"><col class="inc-col-num"><col class="inc-col-num"><col class="inc-col-num"><col class="inc-col-num">';
     const head = table.querySelector('thead tr');
-    if(head) head.innerHTML = '<th>구역</th><th>장치수</th><th>6월 총 가동시간</th><th>6월 장비당 일평균</th><th>7월 총 가동시간</th><th>7월 장비당 일평균</th><th>총 가동시간 증감</th><th>장비당 일평균 증감</th>';
+    if(head) head.innerHTML = `<th>구역</th><th>장치수</th><th>${prevMonth}월 총 가동시간</th><th>${prevMonth}월 장비당 일평균</th><th>${curMonth}월 총 가동시간</th><th>${curMonth}월 장비당 일평균</th><th>총 가동시간 증감</th><th>장비당 일평균 증감</th>`;
   } else if(table && !hasCompare){
     const cg = table.querySelector('colgroup');
     if(cg) cg.innerHTML = '<col class="inc-col-zone"><col class="inc-col-count"><col class="inc-col-num"><col class="inc-col-num">';
@@ -642,10 +699,10 @@ function fillIncreaseTable(tbodyId, rows){
       const curAvg = num(pick(r, ['장비당_일평균가동시간_시간_4월', '장비당_일평균가동시간_시간'], 5)) ?? 0;
       return { zone, deviceCount, cur, curAvg };
     }
-    const prev = num(pickKey(r, ['총가동시간_시간_6월', '총가동시간_시간_5월', '총가동시간_시간_4월', '전월'], pick(r, [], 4))) ?? 0;
-    const prevAvg = num(pickKey(r, ['장비당_일평균가동시간_시간_6월', '장비당_일평균가동시간_시간_5월', '장비당_일평균가동시간_시간_4월'], pick(r, [], 5))) ?? 0;
-    const cur  = num(pickKey(r, ['총가동시간_시간_7월', '총가동시간_시간_6월', '총가동시간_시간_5월', '당월'], pick(r, [], 6))) ?? 0;
-    const curAvg = num(pickKey(r, ['장비당_일평균가동시간_시간_7월', '장비당_일평균가동시간_시간_6월', '장비당_일평균가동시간_시간_5월'], pick(r, [], 7))) ?? 0;
+    const prev = num(pickKey(r, [prevTotalKey, '전월'], pick(r, [], 4))) ?? 0;
+    const prevAvg = num(pickKey(r, [prevAvgKey], pick(r, [], 5))) ?? 0;
+    const cur  = num(pickKey(r, [curTotalKey, '당월'], pick(r, [], 6))) ?? 0;
+    const curAvg = num(pickKey(r, [curAvgKey], pick(r, [], 7))) ?? 0;
     const deviceCount = num(pickKey(r, ['장치수', '제어기_장치수'], pick(r, [], 3))) ?? 0;
     const totalDiff = num(pickKey(r, ['총가동시간_증감'], pick(r, [], 8))) ?? +(cur - prev).toFixed(2);
     const avgDiff = num(pickKey(r, ['장비당_일평균가동시간_증감'], pick(r, [], 9))) ?? +(curAvg - prevAvg).toFixed(2);
