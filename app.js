@@ -6,7 +6,7 @@
    새로고침 시 리포트가 자동 갱신됩니다. (파일명이 바뀌면 설정표만 수정)
    ============================================================ */
 
-const DAYS = Array.from({length:31},(_,i)=>i+1);          // 8월 = 31일
+const DAYS = Array.from({length:30},(_,i)=>i+1);          // 9월 = 30일
 const LC   = ['#2D6BFF','#E5484D','#22C55E','#F59E0B','#7C3AED','#0F766E','#BE185D','#0EA5E9','#78716C','#DB2777'];
 const TT   = {backgroundColor:'#0B1220',titleColor:'#fff',bodyColor:'#E5E9F0',padding:10,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10,boxPadding:3};
 const OUTDOOR_KEY = '최고기온(℃)';
@@ -29,7 +29,7 @@ const DATA_FILES = {
 
 /* ✏️ 공휴일 날짜 — 주말(토·일)은 자동 계산되고, 여기엔 공휴일만 적으면 됩니다.
    해당 날짜의 x축 라벨이 빨간색으로 표시됩니다. (매달 이 줄만 갱신) */
-const PUBLIC_HOLIDAYS = ['2026-08-17']; // 2026년 8월 평일 공휴일: 광복절 대체공휴일
+const PUBLIC_HOLIDAYS = ['2026-09-24', '2026-09-25']; // 2026년 9월 평일 공휴일
 
 function isHolidayDate(s){
   const m = String(s ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -119,7 +119,7 @@ function scaleForValues(values, {unit='', minAtZero=false, minPad=1}={}){
 function tempScale(){
   return {
     min:20,
-    max:38,
+    max:36,
     ticks:{stepSize:2, callback:v=>`${v}℃`, font:{size:9.5}},
     grid:{color:'#EEF1F6'}
   };
@@ -337,25 +337,56 @@ function mkReserveChart(canvasId, legendId, rows){
   if(!el) return;
   const labels = rows.map(r => pickKey(r, ['제어기 닉네임', '공간', '구역명', 'HUB_NICKNAME']));
   const before = rows.map(r => num(pickKey(r, ['예약 전 일평균 가동시간'])));
-  const after  = rows.map(r => num(pickKey(r, ['예약 직후 일평균 가동시간', '예약 후 일평균 가동시간'])));
-  const july   = rows.map(r => num(pickKey(r, ['7월 일평균 가동시간', '당월 일평균 가동시간'])));
-  const aug    = rows.map(r => num(pickKey(r, ['8월 일평균 가동시간', '당월 일평균 가동시간'])));
+  const header = rows[0]?.__header || [];
   const calcRate = (from, to) => Number.isFinite(from) && from !== 0 && Number.isFinite(to) ? +(((from - to) / from) * 100).toFixed(2) : null;
-  const rateAfter = rows.map((r, i) => num(pickKey(r, ['예약 전 대비 예약 직후 감소율(%)', '예약 전 대비 예약 후 감소율(%)', '감소율(%)'])) ?? calcRate(before[i], after[i]));
-  const rateJuly  = rows.map((r, i) => num(pickKey(r, ['예약 전 대비 7월 감소율(%)'])) ?? calcRate(before[i], july[i]));
-  const rateAug   = rows.map((r, i) => num(pickKey(r, ['예약 전 대비 8월 감소율(%)'])) ?? calcRate(before[i], aug[i]));
+  const daysInMonth = month => new Date(2026, month, 0).getDate();
+  const monthCols = header
+    .map(key => {
+      const m = String(key).match(/^(\d+)월 일평균 가동시간$/);
+      return m ? { key, month:Number(m[1]) } : null;
+    })
+    .filter(Boolean)
+    .sort((a,b)=>a.month-b.month);
+  const afterKey = header.find(k => ['예약 직후 일평균 가동시간', '예약 후 일평균 가동시간'].includes(k));
+  const periodCols = [];
+  if(afterKey) periodCols.push({
+    key:afterKey,
+    label:afterKey.includes('직후') ? '예약 직후 일평균 가동시간(6/16~6/30)' : '예약 후 일평균 가동시간',
+    rateKeys:['예약 전 대비 예약 직후 감소율(%)', '예약 전 대비 예약 후 감소율(%)', '감소율(%)'],
+    rateLabel:'예약 직후 감소율'
+  });
+  monthCols.forEach(col => periodCols.push({
+    key:col.key,
+    label:`${col.month}월 일평균 가동시간(${col.month}/1~${col.month}/${daysInMonth(col.month)})`,
+    rateKeys:[`예약 전 대비 ${col.month}월 감소율(%)`],
+    rateLabel:`${col.month}월 감소율`
+  }));
+
   const LBL_BEFORE = '예약 전 일평균 가동시간(6/1~6/15)';
-  const LBL_AFTER  = '예약 직후 일평균 가동시간(6/16~6/30)';
-  const LBL_JULY   = '7월 일평균 가동시간(7/1~7/31)';
-  const LBL_AUG    = '8월 일평균 가동시간(8/1~8/31)';
+  const barColors = ['#2D6BFF', '#22C55E', '#F59E0B', '#7C3AED', '#0F766E', '#BE185D'];
+  const lineStyles = [
+    {color:'#E5484D', dash:[]},
+    {color:'#7C3AED', dash:[4, 3]},
+    {color:'#B91C1C', dash:[2, 3]},
+    {color:'#0F766E', dash:[5, 3]}
+  ];
+  const periodSeries = periodCols.map((col, idx) => {
+    const values = rows.map(r => num(pickKey(r, [col.key, '당월 일평균 가동시간'])));
+    const rates = rows.map((r, i) => num(pickKey(r, col.rateKeys)) ?? calcRate(before[i], values[i]));
+    return {
+      ...col,
+      values,
+      rates,
+      datasetIndex:idx + 1,
+      barColor:barColors[(idx + 1) % barColors.length],
+      lineStyle:lineStyles[idx % lineStyles.length]
+    };
+  });
   const reserveConnector = {
     id:`reserveConnector-${canvasId}`,
     afterDatasetsDraw(chart){
       const {ctx, chartArea} = chart;
       const beforeMeta = chart.getDatasetMeta(0);
-      const afterMeta = chart.getDatasetMeta(1);
-      const julyMeta = chart.getDatasetMeta(2);
-      const augMeta = chart.getDatasetMeta(3);
       ctx.save();
       ctx.lineWidth = 1.25;
       ctx.font = '700 8.5px Pretendard, system-ui, sans-serif';
@@ -391,27 +422,33 @@ function mkReserveChart(canvasId, legendId, rows){
           ctx.fillText(txt, labelX, labelY);
         });
       };
-      draw(afterMeta, rateAfter, '#E5484D', [], 14, -16);
-      draw(julyMeta, rateJuly, '#B91C1C', [3, 3], 15, 6);
-      draw(augMeta, rateAug, '#7C3AED', [2, 3], 16, 26);
+      periodSeries.forEach((series, idx)=>{
+        draw(
+          chart.getDatasetMeta(series.datasetIndex),
+          series.rates,
+          series.lineStyle.color,
+          series.lineStyle.dash,
+          14 + (idx * 7),
+          (idx - (periodSeries.length - 1) / 2) * 18
+        );
+      });
       ctx.restore();
     }
   };
+  const datasets = [
+    {type:'bar', label:LBL_BEFORE, data:before, yAxisID:'y',
+     backgroundColor:'rgba(45,107,255,.72)', borderColor:'#2D6BFF',
+     borderWidth:1, borderRadius:4, maxBarThickness:34},
+    ...periodSeries.map(series => ({
+      type:'bar', label:series.label, data:series.values, yAxisID:'y',
+      backgroundColor:withAlpha(series.barColor, .72), borderColor:series.barColor,
+      borderWidth:1, borderRadius:4, maxBarThickness:34
+    }))
+  ];
+  const maxValue = Math.max(...datasets.flatMap(ds => ds.data).filter(v => Number.isFinite(v)), 0);
+  const yMax = Math.max(3, Math.ceil(maxValue * 1.2 * 2) / 2);
   new Chart(el,{
-    data:{labels, datasets:[
-      {type:'bar', label:LBL_BEFORE, data:before, yAxisID:'y',
-       backgroundColor:'rgba(45,107,255,.72)', borderColor:'#2D6BFF',
-       borderWidth:1, borderRadius:4, maxBarThickness:34},
-      {type:'bar', label:LBL_AFTER, data:after, yAxisID:'y',
-       backgroundColor:'rgba(34,197,94,.72)', borderColor:'#22C55E',
-       borderWidth:1, borderRadius:4, maxBarThickness:34},
-      {type:'bar', label:LBL_JULY, data:july, yAxisID:'y',
-       backgroundColor:'rgba(245,158,11,.72)', borderColor:'#F59E0B',
-       borderWidth:1, borderRadius:4, maxBarThickness:34},
-      {type:'bar', label:LBL_AUG, data:aug, yAxisID:'y',
-       backgroundColor:'rgba(124,58,237,.64)', borderColor:'#7C3AED',
-       borderWidth:1, borderRadius:4, maxBarThickness:34}
-    ]},
+    data:{labels, datasets},
     plugins:[reserveConnector],
     options:{
       responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
@@ -419,16 +456,14 @@ function mkReserveChart(canvasId, legendId, rows){
         label:c => ` ${c.dataset.label}: ${c.parsed.y}h`,
         afterBody:items => {
           const i = items?.[0]?.dataIndex;
-          const lines = [];
-          if(Number.isFinite(rateAfter[i])) lines.push(`예약 직후 감소율: ${rateAfter[i].toFixed(1)}%`);
-          if(Number.isFinite(rateJuly[i])) lines.push(`7월 감소율: ${rateJuly[i].toFixed(1)}%`);
-          if(Number.isFinite(rateAug[i])) lines.push(`8월 감소율: ${rateAug[i].toFixed(1)}%`);
-          return lines;
+          return periodSeries
+            .filter(series => Number.isFinite(series.rates[i]))
+            .map(series => `${series.rateLabel}: ${series.rates[i].toFixed(1)}%`);
         }
       }}},
       scales:{
         x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:10.5}}},
-        y:{position:'left', min:0, max:3,
+        y:{position:'left', min:0, max:yMax,
            title:{display:true,text:'일평균 가동시간(시간)',font:{size:10}},
            ticks:{stepSize:0.5, callback:v=>`${v}`,font:{size:9.5}}, grid:{color:'#EEF1F6'}}
       }
@@ -436,108 +471,30 @@ function mkReserveChart(canvasId, legendId, rows){
   });
   if(legendId){
     const lg = document.getElementById(legendId);
-    if(lg) lg.innerHTML =
-      `<span><i style="background:#2D6BFF;height:8px"></i>${LBL_BEFORE}</span>`+
-      `<span><i style="background:#22C55E;height:8px"></i>${LBL_AFTER}</span>`+
-      `<span><i style="background:#F59E0B;height:8px"></i>${LBL_JULY}</span>`+
-      `<span><i style="background:#7C3AED;height:8px"></i>${LBL_AUG}</span>`+
-      `<span><i style="background:#E5484D;height:2px;width:18px;border-radius:0"></i>예약 직후 감소율 연결선</span>`+
-      `<span><i style="background:transparent;border-top:2px dashed #B91C1C;height:0;width:18px;border-radius:0"></i>7월 감소율 연결선</span>`+
-      `<span><i style="background:transparent;border-top:2px dashed #7C3AED;height:0;width:18px;border-radius:0"></i>8월 감소율 연결선</span>`;
+    if(lg){
+      const barLegend = [`<span><i style="background:#2D6BFF;height:8px"></i>${LBL_BEFORE}</span>`]
+        .concat(periodSeries.map(series => `<span><i style="background:${series.barColor};height:8px"></i>${series.label}</span>`));
+      const lineLegend = periodSeries.map(series => {
+        const {color, dash} = series.lineStyle;
+        const dashStyle = dash.length ? `background:transparent;border-top:2px dashed ${color};height:0` : `background:${color};height:2px`;
+        return `<span><i style="${dashStyle};width:18px;border-radius:0"></i>${series.rateLabel} 연결선</span>`;
+      });
+      lg.innerHTML = barLegend.concat(lineLegend).join('');
+    }
   }
 }
 
 /* ── 1층 야간 자동 꺼짐 예약 전후 비교 ───────────────────── */
-function nightCategoryLabel(v){
-  const s = String(v || '').trim()
-    .replace('22~06시 전체', '22시~06시 전체')
-    .replace('22~00시', '22시~00시')
-    .replace('00~02시', '00시~02시')
-    .replace('02~04시', '02시~04시')
-    .replace('04~06시', '04시~06시');
-  return s.includes('전체') ? ['22시~06시', '전체'] : s;
-}
 function nightChange(raw, before, after){
   const text = String(raw || '');
   const found = text.match(/-?\d+(?:\.\d+)?/);
   const rate = found ? Math.abs(Number(found[0])) : Math.abs(((after - before) / before) * 100);
   const up = text.includes('▲') || (!text.includes('▼') && after > before);
-  return { up, text:`${up ? '▲' : '▼'} ${rate.toFixed(2)}%` };
-}
-function mkNightOffPanel(canvasId, rows, spaceName, yMax){
-  const el = document.getElementById(canvasId);
-  if(!el) return;
-  const sorted = rows
-    .filter(r => String(r['공간'] || '').trim() === spaceName)
-    .sort((a,b)=>(num(a['구간정렬']) ?? 0) - (num(b['구간정렬']) ?? 0));
-  const labels = sorted.map(r => nightCategoryLabel(r['분석 구간']));
-  const june = sorted.map(r => num(r['6월 평균 가동시간']) ?? 0);
-  const july = sorted.map(r => num(r['7월 평균 가동시간']) ?? 0);
-  const changes = sorted.map((r,i)=>nightChange(r['그래프 표시 문구'], june[i], july[i]));
-  const brand = cssColor('--brand', LC[0]);
-  const warn = cssColor('--warn', LC[3]);
-  const alert = cssColor('--alert', LC[1]);
-  const line = cssColor('--line', '#E5E9F0');
-  const ink = cssColor('--ink', '#0B1220');
-  const muted = cssColor('--muted', '#5B6577');
-  const nightLabelPlugin = {
-    id:`nightLabel-${canvasId}`,
-    afterDatasetsDraw(chart){
-      const {ctx, chartArea} = chart;
-      const m0 = chart.getDatasetMeta(0);
-      const m1 = chart.getDatasetMeta(1);
-      ctx.save();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      sorted.forEach((_, i)=>{
-        const b0 = m0.data[i], b1 = m1.data[i];
-        if(!b0 || !b1) return;
-        [[b0, june[i]], [b1, july[i]]].forEach(([bar, value])=>{
-          ctx.fillStyle = ink;
-          ctx.font = '700 9.5px Pretendard, system-ui, sans-serif';
-          ctx.fillText(value.toFixed(2), bar.x, Math.max(chartArea.top + 8, bar.y - 8));
-        });
-        const change = changes[i];
-        const labelY = Math.max(chartArea.top + 10, Math.min(b0.y, b1.y) - 26);
-        ctx.fillStyle = change.up ? alert : brand;
-        ctx.font = '800 10px Pretendard, system-ui, sans-serif';
-        ctx.fillText(change.text, (b0.x + b1.x) / 2, labelY);
-      });
-      ctx.restore();
-    }
-  };
-  new Chart(el,{
-    type:'bar',
-    data:{labels,datasets:[
-      {label:'6월 평균 가동시간', data:june,
-       backgroundColor:withAlpha(brand, .72), borderColor:brand,
-       borderWidth:1, borderRadius:4, maxBarThickness:34},
-      {label:'7월 평균 가동시간', data:july,
-       backgroundColor:withAlpha(warn, .76), borderColor:warn,
-       borderWidth:1, borderRadius:4, maxBarThickness:34}
-    ]},
-    plugins:[nightLabelPlugin],
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:26}},
-      interaction:{mode:'index',intersect:false},
-      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
-        title:items=>Array.isArray(items[0].label) ? items[0].label.join(' ') : items[0].label,
-        label:c=>` ${c.dataset.label}: ${c.parsed.y.toFixed(2)}h`,
-        afterBody:items=>{
-          const i = items?.[0]?.dataIndex;
-          return changes[i]?.text || '';
-        }
-      }}},
-      scales:{
-        x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,font:{size:9.5},color:muted}},
-        y:{min:0,max:yMax,
-          title:{display:true,text:'평균 가동시간(시간)',font:{size:10}},
-          ticks:{stepSize:yMax <= 2.5 ? .5 : 1, callback:v=>`${v}`,font:{size:9.5},color:muted},
-          grid:{color:line}}
-      }
-    }
-  });
+  const decimals = found?.[0]?.includes('.') ? found[0].split('.')[1].length : 2;
+  const rateText = Number.isFinite(rate)
+    ? rate.toFixed(Math.min(2, decimals)).replace(/\.?0+$/, '')
+    : '0';
+  return { up, text:`${up ? '▲' : '▼'} ${rateText}%`, rate };
 }
 function mkNightOffSingleChart(canvasId, legendId, rows){
   const el = document.getElementById(canvasId);
@@ -547,31 +504,67 @@ function mkNightOffSingleChart(canvasId, legendId, rows){
     (String(r['분석 구간'] || '').includes('22~06') || String(r['분석 구간'] || '').includes('22시~06시'))
   ) || rows.find(r => String(r['분석 구간'] || '').includes('22~06'));
   if(!row) return;
-  const labels = ['6월', '7월', '8월'];
-  const values = [
-    num(row['6월 평균 가동시간']) ?? 0,
-    num(row['7월 평균 가동시간']) ?? 0,
-    num(row['8월 평균 가동시간']) ?? 0
-  ];
-  const changes = [
-    nightChange(row['6월 대비 7월 감소율(%)'], values[0], values[1]),
-    nightChange(pickKey(row, ['6월 대비 8월 감소율(%)']), values[0], values[2])
-  ];
-  const yMax = Math.max(1, Math.ceil(Math.max(...values, 0) * 1.28 * 2) / 2);
+  const header = row.__header || [];
+  const monthCols = header
+    .map(key => {
+      const m = String(key).match(/^(\d+)월 평균 가동시간$/);
+      return m ? { key, month:Number(m[1]) } : null;
+    })
+    .filter(Boolean)
+    .sort((a,b)=>a.month-b.month);
+  const labels = monthCols.map(col => `${col.month}월`);
+  const values = monthCols.map(col => num(row[col.key]) ?? 0);
+  const monthIndex = new Map(monthCols.map((col, i) => [col.month, i]));
+  let changes = header
+    .map(key => {
+      const m = String(key).match(/^(\d+)월 대비 (\d+)월 감소율\(%\)$/);
+      if(!m) return null;
+      const fromMonth = Number(m[1]);
+      const toMonth = Number(m[2]);
+      if(!monthIndex.has(fromMonth) || !monthIndex.has(toMonth)) return null;
+      const fromIdx = monthIndex.get(fromMonth);
+      const toIdx = monthIndex.get(toMonth);
+      return {
+        key,
+        fromMonth,
+        toMonth,
+        fromIdx,
+        toIdx,
+        change:nightChange(row[key], values[fromIdx], values[toIdx])
+      };
+    })
+    .filter(Boolean)
+    .sort((a,b)=>a.toMonth-b.toMonth);
+  if(!changes.length && values.length > 1){
+    changes = values.slice(1).map((_, i) => ({
+      fromMonth:monthCols[0].month,
+      toMonth:monthCols[i + 1].month,
+      fromIdx:0,
+      toIdx:i + 1,
+      change:nightChange('', values[0], values[i + 1])
+    }));
+  }
+  const yMax = Math.max(1, Math.ceil(Math.max(...values, 0) * 1.45 * 2) / 2);
   const brand = cssColor('--brand', LC[0]);
   const warn = cssColor('--warn', LC[3]);
   const good = cssColor('--good', LC[2]);
   const alert = cssColor('--alert', LC[1]);
+  const purple = '#7C3AED';
   const line = cssColor('--line', '#E5E9F0');
   const ink = cssColor('--ink', '#0B1220');
   const muted = cssColor('--muted', '#5B6577');
+  const monthColor = month => ({6:brand, 7:warn, 8:good, 9:purple}[month] || LC[month % LC.length]);
+  const barColors = monthCols.map(col => monthColor(col.month));
   const lg = document.getElementById(legendId);
-  if(lg) lg.innerHTML =
-    `<span><i style="background:var(--brand);height:8px"></i>6월 평균 가동시간</span>`+
-    `<span><i style="background:var(--warn);height:8px"></i>7월 평균 가동시간</span>`+
-    `<span><i style="background:${good};height:8px"></i>8월 평균 가동시간</span>`+
-    `<span><i style="background:${alert};height:2px;width:18px;border-radius:0"></i>6월 대비 7월 감소율</span>`+
-    `<span><i style="background:transparent;border-top:2px dashed ${alert};height:0;width:18px;border-radius:0"></i>6월 대비 8월 감소율</span>`;
+  if(lg){
+    const bars = monthCols.map((col, i) => `<span><i style="background:${barColors[i]};height:8px"></i>${col.month}월 평균 가동시간</span>`);
+    const rates = changes.map((spec, i) => {
+      const dashed = i > 0;
+      const style = dashed ? `background:transparent;border-top:2px dashed ${alert};height:0;width:18px;border-radius:0` : `background:${alert};height:2px;width:18px;border-radius:0`;
+      return `<span><i style="${style}"></i>${spec.fromMonth}월 대비 ${spec.toMonth}월 감소율</span>`;
+    });
+    lg.innerHTML = bars.concat(rates).join('');
+  }
   const nightLabelPlugin = {
     id:`nightSingleLabel-${canvasId}`,
     afterDatasetsDraw(chart){
@@ -582,20 +575,17 @@ function mkNightOffSingleChart(canvasId, legendId, rows){
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      const drawRate = (fromIdx, toIdx, change, dash, labelT, labelOffsetX, labelOffsetY, fromYOffset=0, toYOffset=0, alpha=1, fromXOffset=0, toXOffset=0)=>{
+      const drawRate = (spec, idx)=>{
+        const {fromIdx, toIdx, change} = spec;
         const b0 = bars[fromIdx], b1 = bars[toIdx];
         if(!b0 || !b1 || !change) return;
-        const anchorY = (bar, offset) => {
-          if(offset === 'center') return bar.y + ((chartArea.bottom - bar.y) / 2);
-          return bar.y + offset;
-        };
-        const p0X = b0.x + fromXOffset;
-        const p1X = b1.x + toXOffset;
-        const p0Y = Math.min(chartArea.bottom - 3, anchorY(b0, fromYOffset));
-        const p1Y = Math.min(chartArea.bottom - 3, anchorY(b1, toYOffset));
+        const dash = idx === 0 ? [] : [4, 3];
+        const p0X = b0.x;
+        const p1X = b1.x;
+        const p0Y = b0.y + (idx * 5);
+        const p1Y = b1.y + (idx * 5);
         ctx.save();
         ctx.strokeStyle = alert;
-        ctx.globalAlpha = alpha;
         ctx.lineWidth = 1.15;
         ctx.setLineDash(dash);
         ctx.beginPath();
@@ -604,15 +594,14 @@ function mkNightOffSingleChart(canvasId, legendId, rows){
         ctx.stroke();
         ctx.restore();
 
-        const midX = p0X + ((p1X - p0X) * labelT) + labelOffsetX;
-        const midY = p0Y + ((p1Y - p0Y) * labelT) + labelOffsetY;
+        const labelT = idx === 0 ? .52 : .66;
+        const midX = p0X + ((p1X - p0X) * labelT);
+        const midY = p0Y + ((p1Y - p0Y) * labelT) - 18 - (idx * 6);
         ctx.fillStyle = alert;
         ctx.font = '800 10px Pretendard, system-ui, sans-serif';
         ctx.fillText(change.text, midX, Math.max(chartArea.top + 12, midY));
       };
-      const half = i => (bars[i]?.width || 46) / 2;
-      drawRate(0, 2, changes[1], [4, 3], .64, 24, -18, 0, 'center', .7, -half(0), 0);
-      drawRate(0, 1, changes[0], [], .55, 0, -20, 0, 0, 1, half(0), -half(1));
+      changes.forEach((spec, idx)=>drawRate(spec, idx));
 
       bars.forEach((bar, i)=>{
         if(!bar) return;
@@ -627,8 +616,8 @@ function mkNightOffSingleChart(canvasId, legendId, rows){
     type:'bar',
     data:{labels,datasets:[
       {label:'평균 가동시간', data:values,
-       backgroundColor:[withAlpha(brand, .72), withAlpha(warn, .76), withAlpha(good, .72)],
-       borderColor:[brand, warn, good],
+       backgroundColor:barColors.map(color => withAlpha(color, .72)),
+       borderColor:barColors,
        borderWidth:1, borderRadius:4, maxBarThickness:46}
     ]},
     plugins:[nightLabelPlugin],
@@ -641,9 +630,9 @@ function mkNightOffSingleChart(canvasId, legendId, rows){
         label:c=>` 평균 가동시간: ${c.parsed.y.toFixed(2)}h`,
         afterBody:items=>{
           const idx = items?.[0]?.dataIndex;
-          if(idx === 1) return `6월 대비 7월 감소율: ${changes[0].text.replace('▼ ', '').replace('▲ ', '')}`;
-          if(idx === 2) return `6월 대비 8월 감소율: ${changes[1].text.replace('▼ ', '').replace('▲ ', '')}`;
-          return '';
+          return changes
+            .filter(spec => spec.toIdx === idx)
+            .map(spec => `${spec.fromMonth}월 대비 ${spec.toMonth}월 감소율: ${spec.change.text.replace('▼ ', '').replace('▲ ', '')}`);
         }
       }}},
       scales:{
