@@ -6,11 +6,12 @@
    새로고침 시 리포트가 자동 갱신됩니다. (파일명이 바뀌면 설정표만 수정)
    ============================================================ */
 
-const DAYS = Array.from({length:30},(_,i)=>i+1);          // 9월 = 30일
+const DAYS = Array.from({length:31},(_,i)=>i+1);          // 10월 = 31일
 const LC   = ['#2D6BFF','#E5484D','#22C55E','#F59E0B','#7C3AED','#0F766E','#BE185D','#0EA5E9','#78716C','#DB2777'];
 const TT   = {backgroundColor:'#0B1220',titleColor:'#fff',bodyColor:'#E5E9F0',padding:10,cornerRadius:8,displayColors:true,boxWidth:10,boxHeight:10,boxPadding:3};
 const OUTDOOR_KEY = '최고기온(℃)';
 const HOT_TEMP = 28;
+const COLD_TEMP = 10;
 let HOLIDAYS = new Set();                                  // 날짜에서 자동 계산
 
 /* ✏️ 데이터 파일 설정표 — 데이터팀 파일명을 그대로 적으면 됩니다. (CSV만 지원) */
@@ -29,7 +30,7 @@ const DATA_FILES = {
 
 /* ✏️ 공휴일 날짜 — 주말(토·일)은 자동 계산되고, 여기엔 공휴일만 적으면 됩니다.
    해당 날짜의 x축 라벨이 빨간색으로 표시됩니다. (매달 이 줄만 갱신) */
-const PUBLIC_HOLIDAYS = ['2026-09-24', '2026-09-25']; // 2026년 9월 평일 공휴일
+const PUBLIC_HOLIDAYS = ['2026-10-05', '2026-10-09']; // 사용자 확인: 개천절 대체공휴일·한글날
 
 function isHolidayDate(s){
   const m = String(s ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -116,11 +117,17 @@ function scaleForValues(values, {unit='', minAtZero=false, minPad=1}={}){
     grid:{color:'#EEF1F6'}
   };
 }
-function tempScale(){
+function sharedTempBounds(seriesList){
+  const values = seriesList.flatMap(seriesValues);
   return {
-    min:20,
-    max:36,
-    ticks:{stepSize:2, callback:v=>`${v}℃`, font:{size:9.5}},
+    min:Math.floor((Math.min(COLD_TEMP, ...values) - 1) / 2) * 2,
+    max:Math.ceil(Math.max(HOT_TEMP, ...values) / 2) * 2
+  };
+}
+function tempScale(bounds){
+  return {
+    ...bounds,
+    ticks:{stepSize:2, autoSkip:false, callback:v=>`${v}℃`, font:{size:9.5}},
     grid:{color:'#EEF1F6'}
   };
 }
@@ -197,35 +204,43 @@ function tickColor(){
   return (ctx)=> HOLIDAYS.has(DAYS[ctx.index]) ? '#E5484D' : '#5B6577';
 }
 
-const hotTempBandPlugin = {
-  id:'hotTempBand',
+const temperatureBandPlugin = {
+  id:'temperatureBand',
   beforeDatasetsDraw(chart){
-    if(!chart.options.plugins?.hotTempBand?.enabled) return;
+    if(!chart.options.plugins?.temperatureBand?.enabled) return;
     const {ctx, chartArea, scales} = chart;
     const y = scales.y;
-    if(!chartArea || !y || HOT_TEMP > y.max || HOT_TEMP < y.min) return;
-    const yPos = y.getPixelForValue(HOT_TEMP);
+    if(!chartArea || !y) return;
+    const clampY = value => Math.max(chartArea.top, Math.min(chartArea.bottom, y.getPixelForValue(value)));
     ctx.save();
-    ctx.fillStyle = 'rgba(229, 72, 77, .08)';
-    ctx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, yPos - chartArea.top);
-    ctx.strokeStyle = 'rgba(229, 72, 77, .65)';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(chartArea.left, yPos);
-    ctx.lineTo(chartArea.right, yPos);
-    ctx.stroke();
+    const bands = [
+      {threshold:HOT_TEMP, from:chartArea.top, to:clampY(HOT_TEMP), fill:'rgba(229, 72, 77, .08)', stroke:'rgba(229, 72, 77, .65)'},
+      {threshold:COLD_TEMP, from:clampY(COLD_TEMP), to:chartArea.bottom, fill:'rgba(45, 107, 255, .08)', stroke:'rgba(45, 107, 255, .65)'}
+    ];
+    bands.forEach(band=>{
+      ctx.fillStyle = band.fill;
+      ctx.fillRect(chartArea.left, band.from, chartArea.right - chartArea.left, band.to - band.from);
+      if(band.threshold < y.min || band.threshold > y.max) return;
+      const yPos = y.getPixelForValue(band.threshold);
+      ctx.strokeStyle = band.stroke;
+      ctx.beginPath();
+      ctx.moveTo(chartArea.left, yPos);
+      ctx.lineTo(chartArea.right, yPos);
+      ctx.stroke();
+    });
     ctx.restore();
   }
 };
 
-Chart.register(hotTempBandPlugin);
+Chart.register(temperatureBandPlugin);
 
 /* ── 온도 라인차트 (실외 점선 오버레이) ───────────────────── */
-function mkTempChart(canvasId, legendId, series){
+function mkTempChart(canvasId, legendId, series, bounds){
   const el = document.getElementById(canvasId);
   if(!el) return;
-  const yScale = tempScale();
+  const yScale = tempScale(bounds);
   // 실외 계열은 검은 점선, 나머지는 컬러 실선
   const outdoorName = getOutdoorName(series);
   const innerNames = series.names.filter(n => n !== outdoorName);
@@ -248,7 +263,7 @@ function mkTempChart(canvasId, legendId, series){
     data:{labels:DAYS, datasets},
     options:{
       responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{display:false},hotTempBand:{enabled:true},tooltip:{...TT,callbacks:{
+      plugins:{legend:{display:false},temperatureBand:{enabled:true},tooltip:{...TT,callbacks:{
         title:items=>`${items[0].label}일`,
         label:c=>` ${c.dataset.label}: ${c.parsed.y}℃`
       }}},
@@ -266,6 +281,7 @@ function mkTempChart(canvasId, legendId, series){
       let html = innerNames.map((n,i)=>`<span><i style="background:${LC[i%LC.length]}"></i>${n}</span>`).join('');
       html += `<span><i style="background:#111827;height:0;border-top:2px dashed #111827;width:18px"></i>실외 최고기온</span>`;
       html += `<span><i style="background:rgba(229,72,77,.18);border-top:1px dashed #E5484D;width:18px;height:8px"></i>28℃ 이상</span>`;
+      html += `<span><i style="background:rgba(45,107,255,.18);border-top:1px dashed #2D6BFF;width:18px;height:8px"></i>10℃ 이하</span>`;
       lg.innerHTML = html;
     }
   }
@@ -553,7 +569,7 @@ function mkNightOffSingleChart(canvasId, legendId, rows){
   const line = cssColor('--line', '#E5E9F0');
   const ink = cssColor('--ink', '#0B1220');
   const muted = cssColor('--muted', '#5B6577');
-  const monthColor = month => ({6:brand, 7:warn, 8:good, 9:purple}[month] || LC[month % LC.length]);
+  const monthColor = month => ({6:brand, 7:warn, 8:good, 9:purple, 10:warn}[month] || LC[month % LC.length]);
   const barColors = monthCols.map(col => monthColor(col.month));
   const lg = document.getElementById(legendId);
   if(lg){
@@ -596,10 +612,21 @@ function mkNightOffSingleChart(canvasId, legendId, rows){
 
         const labelT = idx === 0 ? .52 : .66;
         const midX = p0X + ((p1X - p0X) * labelT);
-        const midY = p0Y + ((p1Y - p0Y) * labelT) - 18 - (idx * 6);
+        const labelBelow = idx === 0;
+        const direction = labelBelow ? 1 : -1;
+        const midY = p0Y + ((p1Y - p0Y) * labelT) + direction * (labelBelow ? 16 : 24);
+        let labelY = midY;
+        // Keep labels on their own side of every crossing connector.
+        changes.forEach((other, otherIdx)=>{
+          const from = bars[other.fromIdx], to = bars[other.toIdx];
+          if(!from || !to || from.x === to.x || midX < Math.min(from.x, to.x) || midX > Math.max(from.x, to.x)) return;
+          const lineY = from.y + otherIdx * 5 + ((to.y - from.y) * (midX - from.x) / (to.x - from.x));
+          const candidateY = lineY + direction * 14;
+          labelY = labelBelow ? Math.max(labelY, candidateY) : Math.min(labelY, candidateY);
+        });
         ctx.fillStyle = alert;
         ctx.font = '800 10px Pretendard, system-ui, sans-serif';
-        ctx.fillText(change.text, midX, Math.max(chartArea.top + 12, midY));
+        ctx.fillText(change.text, midX, Math.max(chartArea.top + 12, Math.min(chartArea.bottom - 12, labelY)));
       };
       changes.forEach((spec, idx)=>drawRate(spec, idx));
 
@@ -766,10 +793,11 @@ async function main(){
   } catch(e){ showError('CSV 파싱 중 오류: ' + e.message); return; }
 
   /* 온도 그래프 (실외 점선) */
-  mkTempChart('c-temp-zone',     'lg-zone',     tempZone);
-  mkTempChart('c-temp-ctrl-low', 'lg-ctrl-low', ctrlLow);
-  mkTempChart('c-temp-ctrl-6f',  'lg-ctrl-6f',  ctrl6);
-  mkTempChart('c-temp-ctrl-7f',  'lg-ctrl-7f',  ctrl7);
+  const tempBounds = sharedTempBounds([tempZone, ctrlLow, ctrl6, ctrl7]);
+  mkTempChart('c-temp-zone',     'lg-zone',     tempZone, tempBounds);
+  mkTempChart('c-temp-ctrl-low', 'lg-ctrl-low', ctrlLow, tempBounds);
+  mkTempChart('c-temp-ctrl-6f',  'lg-ctrl-6f',  ctrl6, tempBounds);
+  mkTempChart('c-temp-ctrl-7f',  'lg-ctrl-7f',  ctrl7, tempBounds);
 
   /* 가동시간 라인 */
   mkOperLine('c-oper-line', 'lg-oper', operZone);
